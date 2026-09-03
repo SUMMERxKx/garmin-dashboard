@@ -89,7 +89,7 @@ TEMPLATES: dict[ReasonCode, str] = {
     ReasonCode.CALORIES_UNDER_TARGET: "Calories are {difference} kcal below your target of {target}.",
     ReasonCode.CALORIES_OVER_TARGET: "Calories are {difference} kcal above your target of {target}.",
     ReasonCode.NO_FOOD_LOGGED: "No food logged for this day.",
-    ReasonCode.WEIGHT_TREND_DOWN: "Weight trend is {rate} kg/week over the last {window} days.",
+    ReasonCode.WEIGHT_TREND_DOWN: "Weight trend is down {rate} kg/week over the last {window} days.",
     ReasonCode.WEIGHT_TREND_UP: "Weight trend is +{rate} kg/week over the last {window} days.",
     ReasonCode.WEIGHT_TREND_FLAT: "Weight trend is flat over the last {window} days.",
     ReasonCode.WEIGHT_TREND_FLAT_DESPITE_DEFICIT: "Weight has been flat for {window} days despite an average deficit of {avg_deficit} kcal/day.",

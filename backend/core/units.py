@@ -60,5 +60,5 @@ def format_protein_target(grams_per_kg: float, pref: UnitPreference = UnitPrefer
 
 
 def format_duration(minutes: float) -> str:
-    hours, mins = divmod(int(round(minutes)), 60)
+    hours, mins = divmod(round(minutes), 60)
     return f"{hours}h {mins:02d}m" if hours else f"{mins}m"
