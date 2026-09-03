@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+# Never commit real health data or Garmin tokens
+fixtures/raw/
+.garmin_tokens/
+seed/food-library.yaml
+.env

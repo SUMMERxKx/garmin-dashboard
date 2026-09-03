@@ -1,0 +1,160 @@
+# Seed food library — TEMPLATE, fill from your actual product labels.
+#
+# Every `null` below must come from a real label. Nothing here is estimated, on purpose:
+# a guessed macro value contaminates every downstream calculation permanently
+# (see ENGINE.md §1.1 / §7.5). If a label isn't available, leave it null and the food
+# stays out of the library until it is.
+#
+# CRITICAL — `serving_basis`. Read this before filling anything in.
+#
+#   raw      : label macros are per weight BEFORE cooking (chicken, dry rice, dry oats)
+#   cooked   : label macros are per weight AFTER cooking
+#   as_sold  : no cooking involved (milk, yogurt, whey, frozen fruit/veg)
+#
+# This matters more than anything else in this file:
+#   - 200 g raw chicken cooks down to roughly 150 g. Weigh cooked, apply raw macros,
+#     and you UNDER-count protein and calories by about a third.
+#   - 100 g dry rice becomes roughly 250-300 g cooked. Weigh cooked, apply dry macros,
+#     and you OVER-count by 2.5-3x.
+#
+# Decide once, per food, which state you actually weigh in — then record the label on the
+# SAME basis. The app displays the basis next to every entry so it can't drift.
+
+profile:
+  sex: male
+  birth_date: 2003-05-01
+  height_cm: 180
+  starting_weight_kg: 80
+  timezone: America/Vancouver
+
+macro_targets:
+  - effective_from: 2026-09-03
+    goal: cutting
+    kcal: 2350
+    protein_g: 180
+    carbs_g: 260
+    fat_g: 65
+    # arithmetic check: 180*4 + 260*4 + 65*9 = 2345 kcal  -> consistent with the 2350 target
+
+foods:
+  - id: whey-protein
+    name: "Whey protein"
+    brand: null                 # scoop size and macros vary a lot by brand
+    serving_desc: "1 scoop"
+    serving_g: null             # record the actual scoop weight in grams
+    serving_basis: as_sold
+    kcal: null
+    protein_g: null
+    carbs_g: null
+    fat_g: null
+
+  - id: milk-skim
+    name: "Milk, 0% / skim"
+    serving_desc: "250 mL"
+    serving_g: null             # label is usually per 250 mL; note mL and grams if both given
+    serving_basis: as_sold
+    kcal: null
+    protein_g: null
+    carbs_g: null
+    fat_g: null
+    notes: "Typical daily use 500 mL = 2 servings."
+
+  - id: yogurt
+    name: "Yogurt"
+    brand: null                 # Greek vs regular changes protein substantially
+    serving_desc: "100 g"
+    serving_g: 100
+    serving_basis: as_sold
+    kcal: null
+    protein_g: null
+    carbs_g: null
+    fat_g: null
+    notes: "Typical portion 180 g = 1.8 servings."
+
+  - id: oats
+    name: "Oats, dry"
+    serving_desc: "100 g dry"
+    serving_g: 100
+    serving_basis: raw          # label is per dry weight
+    kcal: null
+    protein_g: null
+    carbs_g: null
+    fat_g: null
+    fiber_g: null               # on the label anyway, and worth having
+    notes: "Typical portion 40 g dry = 0.4 servings. Weigh DRY."
+
+  - id: frozen-berries
+    name: "Frozen berries"
+    serving_desc: "100 g"
+    serving_g: 100
+    serving_basis: as_sold
+    kcal: null
+    protein_g: null
+    carbs_g: null
+    fat_g: null
+
+  - id: chicken-breast
+    name: "Chicken breast"
+    serving_desc: "100 g raw"
+    serving_g: 100
+    serving_basis: raw          # <-- confirm this matches how you weigh it
+    kcal: null
+    protein_g: null
+    carbs_g: null
+    fat_g: null
+    notes: "Typical portion ~200 g = 2 servings. Decide raw or cooked ONCE and stay consistent."
+
+  - id: rice
+    name: "Rice, dry"
+    serving_desc: "100 g dry"
+    serving_g: 100
+    serving_basis: raw          # <-- the biggest error source in the whole library
+    kcal: null
+    protein_g: null
+    carbs_g: null
+    fat_g: null
+    notes: "Portion varies day to day — never hardcode. Weigh DRY, or add a separate
+             cooked-basis entry with cooked macros. Do not mix the two."
+
+  - id: frozen-vegetables
+    name: "Frozen vegetables"
+    serving_desc: "100 g"
+    serving_g: 100
+    serving_basis: as_sold
+    kcal: null
+    protein_g: null
+    carbs_g: null
+    fat_g: null
+
+# Saved meals — your current pattern. Servings are starting points, always editable.
+saved_meals:
+  - id: breakfast
+    name: "Breakfast"
+    items:
+      - {food_id: whey-protein, servings: 1}
+      - {food_id: milk-skim,    servings: 2}      # 500 mL
+
+  - id: snack
+    name: "Yogurt & oats"
+    items:
+      - {food_id: yogurt,         servings: 1.8}  # 180 g
+      - {food_id: oats,           servings: 0.4}  # 40 g dry
+      - {food_id: frozen-berries, servings: null} # portion TBD
+
+  - id: afternoon
+    name: "Afternoon meal"
+    items:
+      - {food_id: chicken-breast, servings: 2}    # ~200 g
+      - {food_id: rice,           servings: null} # varies — set per day
+
+  - id: dinner
+    name: "Dinner"
+    items:
+      - {food_id: chicken-breast,   servings: 2}
+      - {food_id: rice,             servings: null}
+      - {food_id: frozen-vegetables, servings: null}
+
+day_templates:
+  - id: normal-day
+    name: "Normal Day"
+    meals: [breakfast, snack, afternoon, dinner]
