@@ -13,14 +13,17 @@ own baselines. It does not plan workouts, set your macros, or let an LLM near ar
 | [PRODUCT.md](PRODUCT.md) | Product definition, MVP, screens, which Garmin data earns its place |
 | [ENGINE.md](ENGINE.md) | Deterministic calculation catalog, reason traces, the code/LLM boundary |
 | [PLAN.md](PLAN.md) | Architecture, data models, AWS, phases, one-way doors |
+| [WALKTHROUGH.md](WALKTHROUGH.md) | **Every file and function explained top to bottom** — read this to understand or explain the code |
 | [LEARNING.md](LEARNING.md) | What each tool is and how much of it you actually need to know |
+| [RESUME.md](RESUME.md) | Resume copy for the project **as it stands today**, with verifiable numbers |
+| [RESUME-COMPLETE.md](RESUME-COMPLETE.md) | Resume copy for the **finished** system (all 7 phases), with slots to fill at ship time |
 | [IDEAS.md](IDEAS.md) | Menu of things to explore, not a backlog |
 
 ## Status
 
-- **Phase 0 — Garmin spike:** probe script written, awaiting a real run against the watch.
-- **Phase 1 — Domain models and calculations:** done. 170 tests, 99% coverage on `backend/core`.
-- **Phase 2 onward:** not started.
+- **Phase 0 — Garmin spike:** **done.** Probe run against the FR165, 3 days of fixtures, field report at `docs/fr165-fields.md`. Findings in [WALKTHROUGH.md](WALKTHROUGH.md) §1.7.
+- **Phase 1 — Domain models and calculations:** **done.** 183 tests, 99% coverage on `backend/core`.
+- **Next:** the normalizer (`providers/garmin.py::normalize`), now that real response shapes are known, then Phase 2 (food library, logging, Copy Yesterday).
 
 ## Setup
 

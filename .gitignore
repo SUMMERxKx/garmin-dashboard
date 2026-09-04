@@ -7,9 +7,10 @@ __pycache__/
 htmlcov/
 *.egg-info/
 # Never commit real health data or Garmin tokens
+# (seed/food-library.yaml holds PROVISIONAL values and is tracked; if you replace them
+#  with real label data you may prefer an untracked seed/food-library.local.yaml override)
 fixtures/raw/
 .garmin_tokens/
-seed/food-library.yaml
 .env
 ENGINE.md
 IDEAS.md
@@ -17,3 +18,4 @@ LEARNING.md
 PLAN.md
 PRODUCT.md
 docs/fr165-fields.local.md
+seed/food-library.local.yaml

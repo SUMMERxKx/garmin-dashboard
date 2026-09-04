@@ -1,0 +1,238 @@
+# Working food library.
+#
+# !! PROVISIONAL VALUES !!
+# The nutrition numbers below are typical published values for these foods, filled in so
+# Phase 2 has something real to compute against. They are NOT from your products' labels.
+# Replace them from the actual packaging before you trust a single number on the dashboard
+# -- whey and yogurt in particular vary enormously between brands.
+#
+# `seed/food-library.template.yaml` stays the pristine, all-null version.
+#
+# Every entry below satisfies kcal ~= 4P + 4C + 9F, enforced by
+# backend/tests/test_seed_data.py, so a typo here fails the build.
+#
+# SERVING BASIS -- the highest-impact field in this file. Cooking changes weight, not macros:
+#   * 200 g raw chicken cooks down to ~150 g. Weigh it cooked against raw macros and you
+#     UNDER-count protein and calories by about a third.
+#   * 100 g dry rice becomes ~250-300 g cooked. Weigh it cooked against dry macros and you
+#     OVER-count by 2.5-3x -- larger than your entire daily deficit.
+# Decide once per food which state you weigh in, and record the label on that same basis.
+
+provisional: true
+
+profile:
+  sex: male
+  birth_date: 2003-05-01
+  height_cm: 180
+  starting_weight_kg: 80
+  timezone: America/Vancouver
+
+macro_targets:
+  - effective_from: 2026-09-03
+    goal: cutting
+    kcal: 2350
+    protein_g: 180
+    carbs_g: 260
+    fat_g: 65
+    # 180*4 + 260*4 + 65*9 = 2345 kcal -- consistent with the 2350 target
+
+foods:
+  # ---- the eight in your current daily rotation ---------------------------
+  - id: whey-protein
+    name: "Whey protein"
+    brand: null                      # scoop size AND macros vary a lot by brand
+    serving_desc: "1 scoop (30 g)"
+    serving_g: 30
+    serving_basis: as_sold
+    kcal: 120
+    protein_g: 24.0
+    carbs_g: 3.0
+    fat_g: 1.5
+
+  - id: milk-skim
+    name: "Milk, 0% / skim"
+    serving_desc: "250 mL"
+    serving_g: 258                   # 250 mL of skim milk weighs ~258 g
+    serving_basis: as_sold
+    kcal: 90
+    protein_g: 8.5
+    carbs_g: 12.5
+    fat_g: 0.2
+    notes: "Your usual 500 mL = 2 servings."
+
+  - id: yogurt
+    name: "Greek yogurt, 0%"
+    brand: null                      # Greek vs regular changes protein substantially
+    serving_desc: "100 g"
+    serving_g: 100
+    serving_basis: as_sold
+    kcal: 59
+    protein_g: 10.0
+    carbs_g: 3.6
+    fat_g: 0.4
+    notes: "Your usual 180 g = 1.8 servings."
+
+  - id: oats
+    name: "Oats, dry"
+    serving_desc: "100 g dry"
+    serving_g: 100
+    serving_basis: raw
+    kcal: 379
+    protein_g: 13.2
+    carbs_g: 67.7
+    fat_g: 6.5
+    fiber_g: 10.1
+    notes: "Your usual 40 g dry = 0.4 servings. Weigh DRY."
+
+  - id: frozen-berries
+    name: "Frozen berries, mixed"
+    serving_desc: "100 g"
+    serving_g: 100
+    serving_basis: as_sold
+    kcal: 50
+    protein_g: 0.7
+    carbs_g: 12.0
+    fat_g: 0.3
+    fiber_g: 3.0
+
+  - id: chicken-breast
+    name: "Chicken breast, skinless"
+    serving_desc: "100 g raw"
+    serving_g: 100
+    serving_basis: raw
+    kcal: 165
+    protein_g: 31.0
+    carbs_g: 0.0
+    fat_g: 3.6
+    notes: "Your usual ~200 g = 2 servings. RAW basis -- 200 g raw is ~150 g cooked."
+
+  - id: rice
+    name: "Rice, white, dry"
+    serving_desc: "100 g dry"
+    serving_g: 100
+    serving_basis: raw
+    kcal: 360
+    protein_g: 7.0
+    carbs_g: 79.0
+    fat_g: 0.9
+    fiber_g: 1.3
+    notes: "Portion varies day to day -- never hardcoded. Weigh DRY."
+
+  - id: frozen-vegetables
+    name: "Frozen vegetables, mixed"
+    serving_desc: "100 g"
+    serving_g: 100
+    serving_basis: as_sold
+    kcal: 45
+    protein_g: 2.5
+    carbs_g: 7.0
+    fat_g: 0.4
+    fiber_g: 2.8
+
+  # ---- also in your rotation, not in the default day ---------------------
+  # These matter for the fat gap described at the bottom of this file.
+  - id: eggs
+    name: "Egg, whole"
+    serving_desc: "1 large (50 g)"
+    serving_g: 50
+    serving_basis: as_sold
+    kcal: 72
+    protein_g: 6.3
+    carbs_g: 0.4
+    fat_g: 4.8
+
+  - id: bread
+    name: "Bread, whole wheat"
+    serving_desc: "1 slice (40 g)"
+    serving_g: 40
+    serving_basis: as_sold
+    kcal: 100
+    protein_g: 4.0
+    carbs_g: 18.0
+    fat_g: 1.2
+    fiber_g: 1.8
+
+  - id: peanut-butter
+    name: "Peanut butter"
+    serving_desc: "1 tbsp (16 g)"
+    serving_g: 16
+    serving_basis: as_sold
+    kcal: 95
+    protein_g: 3.5
+    carbs_g: 3.5
+    fat_g: 8.0
+
+  - id: banana
+    name: "Banana"
+    serving_desc: "1 medium (118 g)"
+    serving_g: 118
+    serving_basis: as_sold
+    kcal: 105
+    protein_g: 1.3
+    carbs_g: 27.0
+    fat_g: 0.4
+    fiber_g: 3.1
+
+  - id: olive-oil
+    name: "Olive oil"
+    serving_desc: "1 tbsp (14 g)"
+    serving_g: 14
+    serving_basis: as_sold
+    kcal: 119
+    protein_g: 0.0
+    carbs_g: 0.0
+    fat_g: 13.5
+    notes: "Cooking oil is easy to forget and it is pure fat -- log it."
+
+saved_meals:
+  - id: breakfast
+    name: "Breakfast"
+    items:
+      - {food_id: whey-protein, servings: 1}
+      - {food_id: milk-skim,    servings: 2}      # 500 mL
+
+  - id: snack
+    name: "Yogurt & oats"
+    items:
+      - {food_id: yogurt,         servings: 1.8}  # 180 g
+      - {food_id: oats,           servings: 0.4}  # 40 g dry
+      - {food_id: frozen-berries, servings: 1.0}
+
+  - id: afternoon
+    name: "Afternoon meal"
+    items:
+      - {food_id: chicken-breast, servings: 2}    # ~200 g raw
+      - {food_id: rice,           servings: null} # varies -- set per day
+
+  - id: dinner
+    name: "Dinner"
+    items:
+      - {food_id: chicken-breast,    servings: 2}
+      - {food_id: rice,              servings: null}
+      - {food_id: frozen-vegetables, servings: 1.5}
+
+day_templates:
+  - id: normal-day
+    name: "Normal Day"
+    meals: [breakfast, snack, afternoon, dinner]
+
+# ---------------------------------------------------------------------------
+# WHAT THIS DAY ACTUALLY ADDS UP TO  (rice assumed at 1 serving = 100 g dry per meal)
+#
+#            logged    target    gap
+#   kcal      2055      2350     -295
+#   protein    207       180      +27
+#   carbs      242       260      -18
+#   fat         22        65      -43     <-- the whole story
+#
+# The day as you described it is very low fat: no oils, no yolks, no nuts. The missing
+# ~43 g of fat is ~390 kcal, which almost exactly accounts for the calorie shortfall.
+#
+# So one of two things is true, and only you know which:
+#   1. you also eat fats you did not list -- cooking oil, eggs, peanut butter -- in which
+#      case log them (they are in the library above), or
+#   2. the 65 g fat target does not match how you actually eat, and the target should move.
+#
+# Either way this is the app working: it found a 300 kcal hole on day one, from arithmetic,
+# before any LLM was involved.
+# ---------------------------------------------------------------------------
