@@ -1,0 +1,19 @@
+[
+  {
+    "activityId": 90000001,
+    "activityName": "Push Day",
+    "startTimeLocal": "2026-09-02 17:05:00",
+    "startTimeGMT": "2026-09-03 00:05:00",
+    "activityType": {"typeId": 13, "typeKey": "strength_training", "parentTypeId": 29, "isHidden": false},
+    "distance": 0.0,
+    "duration": 3480.0,
+    "elapsedDuration": 3620.0,
+    "movingDuration": 3300.0,
+    "calories": 402.0,
+    "bmrCalories": 72.0,
+    "averageHR": 118.0,
+    "maxHR": 152.0,
+    "steps": 412,
+    "isAutoCalcCalories": false
+  }
+]

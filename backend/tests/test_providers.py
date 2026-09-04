@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from datetime import date
 
-import pytest
-
+from backend.core.models import DailyHealthSnapshot
 from backend.providers.base import ArgStyle, MetricsProvider, ProviderCapabilities, RawPayloads
 from backend.providers.garmin import ENDPOINTS, TIER_1, GarminProvider, endpoint_by_name
 from backend.providers.introspect import TIER_1_METRICS, find_metrics, missing_tier_1, summarize
@@ -73,12 +72,43 @@ def test_provider_satisfies_the_port() -> None:
     assert isinstance(GarminProvider(FakeClient()), MetricsProvider)
 
 
-def test_normalize_refuses_to_guess_at_shapes() -> None:
-    """Phase 0 discipline, enforced: no field extraction before real fixtures exist."""
+def test_normalize_delegates_to_the_pure_mapping() -> None:
+    """Phase 0 is complete, so `normalize` now maps real discovered field paths.
+
+    Until fixtures existed this test asserted `NotImplementedError` -- Phase 0 discipline
+    made executable, so field extraction could not be built on guessed shapes. That guard
+    has served its purpose; what matters now is that the provider stays a thin pass-through
+    to the pure mapping module, which is what keeps normalization testable against saved
+    fixtures without a client. Field-level assertions live in test_garmin_mapping.py.
+    """
     provider = GarminProvider(FakeClient())
     raw = RawPayloads(provider="garmin", on=date(2026, 9, 2), payloads={})
-    with pytest.raises(NotImplementedError, match="fixtures"):
-        provider.normalize(raw)
+    snapshot = provider.normalize(raw)
+    assert isinstance(snapshot, DailyHealthSnapshot)
+    assert snapshot.date == date(2026, 9, 2)
+    # nothing to extract from empty payloads, and that is not an error
+    assert snapshot.measured.provenance == {}
+
+
+class ExplodingClient:
+    """Every attribute access raises. Used to prove `normalize` never touches the client."""
+
+    def __getattr__(self, name: str) -> object:
+        raise AssertionError(f"normalize must not call the client (tried {name!r})")
+
+
+def test_normalize_does_not_touch_the_client() -> None:
+    """`normalize` is pure. If it reached for the client this would raise, which is what
+    lets normalization be tested against saved fixtures with no network at all."""
+    provider = GarminProvider(ExplodingClient())
+    snapshot = provider.normalize(
+        RawPayloads(
+            provider="garmin", on=date(2026, 9, 2),
+            payloads={"user_summary": {"totalKilocalories": 2421.0, "totalSteps": 13842}},
+        )
+    )
+    assert snapshot.measured.energy.total_kcal == 2421.0
+    assert snapshot.measured.activity.steps == 13842
 
 
 def test_capabilities_are_queried_not_assumed() -> None:

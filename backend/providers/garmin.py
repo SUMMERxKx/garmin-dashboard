@@ -16,7 +16,9 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
+from backend.core.models import DailyHealthSnapshot
 from backend.providers.base import ArgStyle, Endpoint, ProviderCapabilities, RawPayloads
+from backend.providers.garmin_mapping import normalize_day
 
 #: Every call we make, and why. Selected against the six dashboard questions -- not
 #: against what the API happens to expose. Golf metrics, race predictors and per-second
@@ -93,8 +95,11 @@ class GarminProvider:
                 errors[endpoint.name] = f"{type(exc).__name__}: {exc}"
         return RawPayloads(provider=self.name, on=on, payloads=payloads, errors=errors)
 
-    def normalize(self, raw: RawPayloads) -> Any:
-        raise NotImplementedError(
-            "Normalization is written against real FR165 fixtures in Phase 0, not against "
-            "guessed response shapes. Run scripts/garmin_probe.py first."
-        )
+    def normalize(self, raw: RawPayloads) -> DailyHealthSnapshot:
+        """Delegate to the pure mapping module.
+
+        Kept as a thin pass-through so normalization can be tested against saved fixtures
+        without constructing a client or touching the network. Every field path in there
+        was discovered by `scripts/garmin_probe.py`, not guessed.
+        """
+        return normalize_day(raw)

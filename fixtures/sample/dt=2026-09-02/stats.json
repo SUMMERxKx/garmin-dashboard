@@ -1,0 +1,11 @@
+{
+  "userProfileId": 1000001,
+  "calendarDate": "2026-09-02",
+  "totalKilocalories": 2421.0,
+  "activeKilocalories": 617.0,
+  "bmrKilocalories": 1804.0,
+  "totalSteps": 13842,
+  "totalDistanceMeters": 10450,
+  "restingHeartRate": 53,
+  "measurableAwakeDuration": 60000
+}

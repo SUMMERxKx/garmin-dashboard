@@ -1,0 +1,10 @@
+{
+  "userProfilePK": 1000001,
+  "calendarDate": "2026-09-02",
+  "averageSpO2": null,
+  "lowestSpO2": null,
+  "latestSpO2": null,
+  "avgSleepSpO2": null,
+  "spO2SingleValues": null,
+  "spO2HourlyAverages": null
+}
