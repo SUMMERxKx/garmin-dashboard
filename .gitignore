@@ -24,3 +24,7 @@ RESUME-COMPLETE.md
 docs/
 docs/fr165-fields.local.md
 seed/food-library.local.yaml
+
+# Local database -- contains real health data
+garmin-dashboard.db
+*.db

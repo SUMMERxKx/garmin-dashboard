@@ -44,7 +44,7 @@ receives only computed metrics and structured reason traces, never raw records.
 | 0 · Provider discovery | **done** — probe run against a real FR165, response shapes mapped |
 | 1 · Domain models & calculation engine | **done** — 11 modules, 99% coverage |
 | 1b · Garmin → canonical normalizer | **done** — field paths discovered by the probe, 100% covered |
-| 2 · Nutrition + local dashboard | next |
+| 2 · Nutrition + local storage + CLI | **done** — SQLite store, food log, Copy Yesterday, day view |
 | 3 · AWS data pipeline | designed, not built |
 | 4 · API + React PWA | designed, not built |
 | 5 · Historical analytics | designed, not built |
@@ -142,6 +142,19 @@ The provider layer:
 | `providers/garmin_mapping.py` | pure Garmin JSON → canonical model, with provenance and tier-1 field coverage |
 | `providers/introspect.py` | structure-only response discovery used by the probe |
 
+Storage and services:
+
+| Module | Responsibility |
+|---|---|
+| `adapters/keys.py` | the PK/SK key scheme, shared by every storage backend |
+| `adapters/repository.py` | the storage port, plus an in-memory implementation for tests |
+| `adapters/sqlite_repository.py` | local SQLite store using the same keys as the planned DynamoDB table |
+| `adapters/seed_loader.py` | seed YAML → stored records, validating every food on the way in |
+| `services/garmin_import.py` | saved raw responses → canonical snapshots (the replay path) |
+| `services/food_log.py` | log, adjust, remove, apply a meal or template, Copy Yesterday |
+| `services/day_view.py` | assembles one day: stored data + engine → one renderable object |
+| `cli/main.py` | the Phase 2 interface: `init`, `today`, `log`, `weigh`, `copy-yesterday` |
+
 Every derived value emits a `Reason` carrying its own numbers, window and sample size — so
 nothing downstream recomputes, and the UI's "Why?" affordance and the LLM layer consume the
 same object.
@@ -154,6 +167,30 @@ same object.
 python3 -m venv .venv
 .venv/bin/python -m pip install -e ".[dev,cli]"
 .venv/bin/python -m pytest
+```
+
+Set up the database and load the seed:
+
+```bash
+.venv/bin/python -m backend.cli.main init
+```
+
+Then use it:
+
+```bash
+.venv/bin/python -m backend.cli.main today
+```
+
+```bash
+.venv/bin/python -m backend.cli.main template normal-day --rice 1.25
+```
+
+```bash
+.venv/bin/python -m backend.cli.main weigh 79.4
+```
+
+```bash
+.venv/bin/python -m backend.cli.main copy-yesterday
 ```
 
 Run the linter:
@@ -182,7 +219,9 @@ data.
 backend/
   core/          pure domain: engine, models, reason vocabulary. No AWS, no I/O, no clock.
   providers/     the provider port + Garmin fetch adapter and JSON→canonical mapping
-  adapters/      persistence (in progress)
+  adapters/      storage: the port, in-memory and SQLite implementations, seed loading
+  services/      use cases: import, food logging, day assembly
+  cli/           the terminal interface
   tests/         15 files
 scripts/
   garmin_probe.py   Phase 0 discovery tool
@@ -197,9 +236,36 @@ infra/           AWS CDK app (not started)
 
 ---
 
+## Code style
+
+**Explicit over clever, deliberately.** Code is read far more often than it is written,
+and this project optimises for someone meeting a file for the first time.
+
+In practice:
+
+- **Import the module, not the names.** `from backend.core import models`, then `models.Food` at the usage site — so every line says where its pieces came from, instead of sending you back to the import block to find out. One import per line, enforced by `force-single-line` in the ruff config.
+- **No packed one-liners.** An `if`/`else` on separate lines beats a ternary; a named intermediate variable beats a nested expression.
+- **Meaningful names over conventional short ones.** The regression code says `spread_in_days` and `joint_spread`, not `sxx` and `sxy`. The maths is standard; the names should not require you to already know it.
+- **Comments explain *why*, not *what*.** The `max(0.0, ...)` around a fat-mass calculation has a comment saying it is a floor against mistyped input, not one saying it takes a maximum.
+- **Configuration as named fields, not tuples.** `RecoveryInput(metric_name=..., higher_is_better=...)` rather than a tuple whose second element you have to go and look up.
+- **Magic numbers get named constants** with a note on where the number came from.
+- **Explicit loops where a comprehension would be doing real work.** A comprehension filtering on three conditions at once is harder to read, and much harder to debug, than four plain lines.
+
+Several `ruff` rules are configured in `pyproject.toml` to support this rather than fight
+it — simplification rules that collapse readable branches into dense expressions are off,
+imports are forced one-per-line, and the two framework false positives (`B008` for
+Typer/FastAPI defaults, `E402` for the probe script's deferred imports) are scoped to the
+files that need them. Each has the rationale written next to it.
+
+There is exactly one documented exception to the module-import rule, in
+`backend/core/models.py`: several models have a field literally named `reasons`, which
+inside a class body would shadow the module of the same name. That file imports `Reason`
+and `ReasonCode` directly, and says why.
+
 ## Testing
 
-234 tests, 99% statement coverage across `backend/core` and `backend/providers`, ~1s to run, **zero mocks** — a
+387 tests, 98% statement coverage across `backend/core`, `backend/providers`,
+`backend/adapters` and `backend/services`, ~1.2s to run, **zero mocks** — a
 direct consequence of the purity boundary rather than extra effort.
 
 ```bash

@@ -5,12 +5,12 @@ from datetime import date
 import pytest
 
 from backend.core import body_composition as bc
-from backend.core.models import DexaScan
-from backend.core.reasons import ReasonCode
+from backend.core import models
+from backend.core import reasons
 
 
-def scan(day: date, total: float, fat: float, lean: float, bone: float = 3.2) -> DexaScan:
-    return DexaScan(
+def scan(day: date, total: float, fat: float, lean: float, bone: float = 3.2) -> models.DexaScan:
+    return models.DexaScan(
         date=day, total_mass_kg=total, fat_mass_kg=fat, lean_mass_kg=lean,
         bone_mass_kg=bone, body_fat_pct=fat / total * 100.0,
     )
@@ -28,7 +28,7 @@ def test_reconciliation_guard_catches_a_misread_decimal() -> None:
 def test_a_scan_is_measured() -> None:
     result = bc.from_dexa(scan(date(2026, 10, 1), 80.0, 15.2, 61.5))
     assert result.measured is True
-    assert result.reasons[0].code is ReasonCode.COMPOSITION_MEASURED
+    assert result.reasons[0].code is reasons.ReasonCode.COMPOSITION_MEASURED
 
 
 def test_an_estimate_is_never_marked_measured() -> None:
@@ -37,7 +37,7 @@ def test_an_estimate_is_never_marked_measured() -> None:
     result = bc.estimate(77.0, date(2026, 11, 15), anchor)
     assert result.measured is False
     assert result.p_fat_used == bc.DEFAULT_P_FAT
-    assert result.reasons[0].code is ReasonCode.COMPOSITION_ESTIMATED
+    assert result.reasons[0].code is reasons.ReasonCode.COMPOSITION_ESTIMATED
 
 
 def test_estimate_attributes_most_loss_to_fat() -> None:

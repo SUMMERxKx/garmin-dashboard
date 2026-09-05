@@ -15,7 +15,8 @@ from __future__ import annotations
 
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
+from pydantic import ConfigDict
 
 
 class ReasonCode(StrEnum):
@@ -125,31 +126,84 @@ class Reason(BaseModel):
     detail: dict[str, float | int | str] = {}
 
     def render(self) -> str:
-        """Templated English. Never call an LLM to produce baseline readability."""
+        """Turn this reason into a plain English sentence.
+
+        Uses the template table above -- no LLM involved. The app has to be completely
+        readable with the AI layer switched off; the AI's job later is to write it
+        *better*, never to make it possible.
+        """
         template = TEMPLATES.get(self.code)
-        if template is None:  # pragma: no cover - guarded by test_all_codes_have_templates
+
+        # Every code is supposed to have a template, and a test enforces that. This is
+        # only a safety net so a missing one degrades to a readable code rather than
+        # crashing the dashboard.
+        if template is None:  # pragma: no cover - guarded by test_every_code_has_a_template
             return self.code.value
-        values: dict[str, object] = {
-            "metric": self.metric or "this metric",
-            "current": _fmt(self.current),
-            "baseline": _fmt(self.baseline),
-            "unit": self.unit or "",
-            "difference": _fmt(abs(self.difference)) if self.difference is not None else "",
-            "difference_percent": _fmt(self.difference_percent),
-            "abs_pct": _fmt(abs(self.difference_percent)) if self.difference_percent is not None else "",
-            "window": self.window_days if self.window_days is not None else "",
-            "n": self.n if self.n is not None else "",
-        }
+
+        # Build the values the template can refer to by name. Anything missing becomes
+        # an empty string rather than the word "None" appearing in a sentence.
+        values: dict[str, object] = {}
+
+        values["metric"] = self.metric or "this metric"
+        values["unit"] = self.unit or ""
+        values["current"] = format_number(self.current)
+        values["baseline"] = format_number(self.baseline)
+        values["difference_percent"] = format_number(self.difference_percent)
+
+        # Differences are stored with a sign, because the direction matters elsewhere.
+        # But the templates already say "below" or "above" in words, so they want the
+        # size without the sign -- otherwise you get "11% below" rendered as "-11% below".
+        if self.difference is None:
+            values["difference"] = ""
+        else:
+            values["difference"] = format_number(abs(self.difference))
+
+        if self.difference_percent is None:
+            values["abs_pct"] = ""
+        else:
+            values["abs_pct"] = format_number(abs(self.difference_percent))
+
+        if self.window_days is None:
+            values["window"] = ""
+        else:
+            values["window"] = self.window_days
+
+        if self.n is None:
+            values["n"] = ""
+        else:
+            values["n"] = self.n
+
+        # `detail` carries the extras that only some codes need, such as a target value
+        # or a number of consecutive days. It is applied last so a code can override a
+        # standard field if it needs to.
         values.update(self.detail)
+
         try:
             return template.format(**values)
-        except KeyError:  # pragma: no cover - guarded by test_templates_render
+        except KeyError:  # pragma: no cover - guarded by test_every_template_renders
+            # A template asked for a placeholder nobody supplied. A test covers this
+            # for every code, so reaching here means a template was just edited.
             return self.code.value
 
 
-def _fmt(value: float | None) -> str:
-    """Render a number without trailing noise: 6.4 not 6.400000000000001."""
+def format_number(value: float | None) -> str:
+    """Format a number for a sentence, without floating-point noise.
+
+    Two things this fixes:
+
+      52.20000000000001  ->  "52.2"    (rounded to one decimal place)
+      47.0               ->  "47"      (a whole number does not need ".0")
+
+    The second one matters more than it looks: "HRV was 47 ms" reads like something a
+    person wrote, and "HRV was 47.0 ms" reads like something a machine printed.
+    """
     if value is None:
         return ""
+
     rounded = round(value, 1)
-    return str(int(rounded)) if rounded == int(rounded) else str(rounded)
+
+    # `rounded == int(rounded)` is true for whole numbers like 47.0 but not for 52.2.
+    if rounded == int(rounded):
+        return str(int(rounded))
+
+    return str(rounded)

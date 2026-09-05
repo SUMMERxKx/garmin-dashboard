@@ -11,8 +11,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import date
 
-from backend.core.models import Composition, DexaScan, ScanComparison
-from backend.core.reasons import Reason, ReasonCode
+from backend.core import models
+from backend.core import reasons
 
 #: Fraction of weight change that is fat, used between anchors.
 #: 0.85 rather than the generic 0.75 because 3 resistance sessions/week at ~2.25 g/kg
@@ -22,8 +22,8 @@ from backend.core.reasons import Reason, ReasonCode
 DEFAULT_P_FAT = 0.85
 
 
-def from_dexa(scan: DexaScan) -> Composition:
-    return Composition(
+def from_dexa(scan: models.DexaScan) -> models.Composition:
+    return models.Composition(
         date=scan.date,
         weight_kg=scan.total_mass_kg,
         fat_mass_kg=scan.fat_mass_kg,
@@ -32,8 +32,8 @@ def from_dexa(scan: DexaScan) -> Composition:
         measured=True,
         anchor_scan_date=scan.date,
         reasons=[
-            Reason(
-                code=ReasonCode.COMPOSITION_MEASURED,
+            reasons.Reason(
+                code=reasons.ReasonCode.COMPOSITION_MEASURED,
                 metric="body_composition",
                 detail={"anchor_date": scan.date.isoformat()},
             )
@@ -41,18 +41,30 @@ def from_dexa(scan: DexaScan) -> Composition:
     )
 
 
-def latest_scan_before(scans: Sequence[DexaScan], on: date) -> DexaScan | None:
-    applicable = [s for s in scans if s.date <= on]
-    return max(applicable, key=lambda s: s.date) if applicable else None
+def latest_scan_before(scans: Sequence[models.DexaScan], on: date) -> models.DexaScan | None:
+    """The most recent scan on or before `on`, or None if there is not one yet.
+
+    Asking for a past date gives the anchor that was current back then, not a later
+    scan -- so a historical dashboard is not informed by the future.
+    """
+    scans_on_or_before = []
+    for scan in scans:
+        if scan.date <= on:
+            scans_on_or_before.append(scan)
+
+    if not scans_on_or_before:
+        return None
+
+    return max(scans_on_or_before, key=lambda scan: scan.date)
 
 
 def estimate(
     weight_kg: float,
     on: date,
-    anchor: DexaScan,
+    anchor: models.DexaScan,
     *,
     p_fat: float = DEFAULT_P_FAT,
-) -> Composition:
+) -> models.Composition:
     """Project composition forward from an anchor scan.
 
     fat_mass = fat_at_anchor + (weight_now - weight_at_anchor) * p_fat
@@ -60,11 +72,22 @@ def estimate(
     Always `measured=False`. The `Composition.measured` flag is the guard that stops this
     ever rendering as if a scan had happened.
     """
-    delta = weight_kg - anchor.total_mass_kg
-    fat_mass = max(0.0, anchor.fat_mass_kg + delta * p_fat)
+    weight_change_since_scan = weight_kg - anchor.total_mass_kg
+
+    # Split the weight change into fat and everything else. `p_fat` of 0.85 means we
+    # assume 85% of what was lost (or gained) was fat.
+    fat_change = weight_change_since_scan * p_fat
+
+    # max(0.0, ...) is a floor, not real physiology -- it stops an extreme or mistyped
+    # weight from producing a negative fat mass.
+    fat_mass = max(0.0, anchor.fat_mass_kg + fat_change)
     lean_mass = max(0.0, weight_kg - fat_mass)
-    body_fat_pct = (fat_mass / weight_kg * 100.0) if weight_kg else 0.0
-    return Composition(
+
+    if weight_kg > 0:
+        body_fat_pct = (fat_mass / weight_kg) * 100.0
+    else:
+        body_fat_pct = 0.0
+    return models.Composition(
         date=on,
         weight_kg=weight_kg,
         fat_mass_kg=fat_mass,
@@ -74,8 +97,8 @@ def estimate(
         anchor_scan_date=anchor.date,
         p_fat_used=p_fat,
         reasons=[
-            Reason(
-                code=ReasonCode.COMPOSITION_ESTIMATED,
+            reasons.Reason(
+                code=reasons.ReasonCode.COMPOSITION_ESTIMATED,
                 metric="body_composition",
                 detail={"anchor_date": anchor.date.isoformat(), "p_fat": p_fat},
             )
@@ -86,10 +109,10 @@ def estimate(
 def composition_on(
     weight_kg: float | None,
     on: date,
-    scans: Sequence[DexaScan],
+    scans: Sequence[models.DexaScan],
     *,
     p_fat: float = DEFAULT_P_FAT,
-) -> Composition | None:
+) -> models.Composition | None:
     """Measured if a scan landed on this day, estimated if an anchor exists, else None.
 
     With no scan at all the Body screen shows weight and trend only -- inventing a body
@@ -106,10 +129,10 @@ def composition_on(
     return estimate(weight_kg, on, anchor, p_fat=p_fat)
 
 
-def compare_scans(a: DexaScan, b: DexaScan) -> ScanComparison:
+def compare_scans(a: models.DexaScan, b: models.DexaScan) -> models.ScanComparison:
     """Chronological regardless of argument order."""
     first, second = sorted((a, b), key=lambda s: s.date)
-    return ScanComparison(
+    return models.ScanComparison(
         from_date=first.date,
         to_date=second.date,
         days_between=(second.date - first.date).days,
@@ -120,7 +143,7 @@ def compare_scans(a: DexaScan, b: DexaScan) -> ScanComparison:
     )
 
 
-def solve_p_fat(a: DexaScan, b: DexaScan) -> float | None:
+def solve_p_fat(a: models.DexaScan, b: models.DexaScan) -> float | None:
     """Your actual fat/lean partitioning ratio, from two scans.
 
     This is the point of section 6.2: the literature default gets retired and replaced by

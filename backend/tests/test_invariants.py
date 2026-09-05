@@ -5,29 +5,26 @@ Table-driven tests check the cases I thought of. These check the ones I didn't.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
+from datetime import timedelta
 
 import pytest
-from hypothesis import given, settings
+from hypothesis import given
+from hypothesis import settings
 from hypothesis import strategies as st
 
-from backend.core import baselines, energy, nutrition, trends, weight
-from backend.core.models import (
-    BalanceState,
-    Food,
-    GoalType,
-    MacroTarget,
-    MacroTotals,
-    Profile,
-    ServingBasis,
-    Sex,
-)
-from backend.core.units import kg_to_lb, lb_to_kg
+from backend.core import baselines
+from backend.core import energy
+from backend.core import models
+from backend.core import nutrition
+from backend.core import trends
+from backend.core import units
+from backend.core import weight
 
 TODAY = date(2026, 9, 3)
 
 macros = st.builds(
-    MacroTotals,
+    models.MacroTotals,
     kcal=st.floats(0, 10_000, allow_nan=False),
     protein_g=st.floats(0, 500, allow_nan=False),
     carbs_g=st.floats(0, 1000, allow_nan=False),
@@ -36,24 +33,24 @@ macros = st.builds(
 
 
 @given(a=macros, b=macros)
-def test_macro_addition_is_commutative(a: MacroTotals, b: MacroTotals) -> None:
+def test_macro_addition_is_commutative(a: models.MacroTotals, b: models.MacroTotals) -> None:
     assert (a + b).kcal == pytest.approx((b + a).kcal)
     assert (a + b).protein_g == pytest.approx((b + a).protein_g)
 
 
 @given(a=macros, b=macros, c=macros)
-def test_macro_addition_is_associative(a: MacroTotals, b: MacroTotals, c: MacroTotals) -> None:
+def test_macro_addition_is_associative(a: models.MacroTotals, b: models.MacroTotals, c: models.MacroTotals) -> None:
     assert ((a + b) + c).kcal == pytest.approx((a + (b + c)).kcal, rel=1e-9)
 
 
 @given(a=macros)
-def test_scaling_by_zero_empties(a: MacroTotals) -> None:
+def test_scaling_by_zero_empties(a: models.MacroTotals) -> None:
     assert a.scale(0.0).kcal == 0.0
     assert a.scale(0.0).protein_g == 0.0
 
 
 @given(a=macros, f=st.floats(0.1, 10, allow_nan=False))
-def test_scaling_is_linear(a: MacroTotals, f: float) -> None:
+def test_scaling_is_linear(a: models.MacroTotals, f: float) -> None:
     assert a.scale(f).kcal == pytest.approx(a.kcal * f)
 
 
@@ -63,12 +60,12 @@ def test_scaling_is_linear(a: MacroTotals, f: float) -> None:
     protein=st.floats(50, 300, allow_nan=False),
 )
 def test_remaining_always_reconstructs_the_target(
-    consumed: MacroTotals, kcal: float, protein: float
+    consumed: models.MacroTotals, kcal: float, protein: float
 ) -> None:
     """The Nutrition screen shows consumed and remaining side by side; if they don't add
     back to the target, one of the two numbers on screen is lying."""
-    target = MacroTarget(
-        effective_from=TODAY, goal=GoalType.CUTTING,
+    target = models.MacroTarget(
+        effective_from=TODAY, goal=models.GoalType.CUTTING,
         kcal=kcal, protein_g=protein, carbs_g=200.0, fat_g=60.0,
     )
     left = nutrition.remaining(consumed, target)
@@ -84,8 +81,8 @@ def test_remaining_always_reconstructs_the_target(
 def test_a_food_built_from_four_four_nine_always_validates(
     protein: float, carbs: float, fat: float
 ) -> None:
-    food = Food(
-        id="x", name="x", serving_desc="100 g", serving_basis=ServingBasis.AS_SOLD,
+    food = models.Food(
+        id="x", name="x", serving_desc="100 g", serving_basis=models.ServingBasis.AS_SOLD,
         kcal=nutrition.implied_kcal(protein, carbs, fat),
         protein_g=protein, carbs_g=carbs, fat_g=fat,
     )
@@ -94,7 +91,7 @@ def test_a_food_built_from_four_four_nine_always_validates(
 
 @given(kg=st.floats(30, 250, allow_nan=False))
 def test_weight_conversion_round_trips(kg: float) -> None:
-    assert lb_to_kg(kg_to_lb(kg)) == pytest.approx(kg, rel=1e-12)
+    assert units.lb_to_kg(units.kg_to_lb(kg)) == pytest.approx(kg, rel=1e-12)
 
 
 @given(
@@ -103,9 +100,9 @@ def test_weight_conversion_round_trips(kg: float) -> None:
 )
 def test_balance_sign_always_matches_its_state(burned: float, consumed: float) -> None:
     result = energy.energy_balance(burned, consumed)
-    if result.state is BalanceState.DEFICIT:
+    if result.state is models.BalanceState.DEFICIT:
         assert result.balance_kcal < 0
-    elif result.state is BalanceState.SURPLUS:
+    elif result.state is models.BalanceState.SURPLUS:
         assert result.balance_kcal > 0
     assert result.balance_kcal == pytest.approx(consumed - burned)
 
@@ -113,12 +110,12 @@ def test_balance_sign_always_matches_its_state(burned: float, consumed: float) -
 @given(
     weight_kg=st.floats(40, 200, allow_nan=False),
     height_cm=st.floats(140, 220, allow_nan=False),
-    sex=st.sampled_from(list(Sex)),
+    sex=st.sampled_from(list(models.Sex)),
 )
 def test_bmr_is_always_a_plausible_positive_number(
-    weight_kg: float, height_cm: float, sex: Sex
+    weight_kg: float, height_cm: float, sex: models.Sex
 ) -> None:
-    profile = Profile(user_id="x", sex=sex, birth_date=date(2003, 5, 1), height_cm=height_cm)
+    profile = models.Profile(user_id="x", sex=sex, birth_date=date(2003, 5, 1), height_cm=height_cm)
     assert 400.0 < energy.bmr(profile, weight_kg, TODAY).kcal < 4000.0
 
 

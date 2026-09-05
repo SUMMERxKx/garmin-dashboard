@@ -15,13 +15,23 @@ Every measured field is Optional. A watch left on the charger is a normal Tuesda
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
+from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel
+from pydantic import ConfigDict
+from pydantic import Field
 
+from backend.core import units
+
+# EXCEPTION to the import-the-module rule used everywhere else in this project.
+# Several models below have a field literally called `reasons`, and inside a class
+# body that name would shadow the module -- so `list[Reason]` would resolve
+# to the field instead of the module and Pydantic would fail to build the model.
+# Importing the two names directly avoids the collision, and in a file that is
+# nothing but type definitions `Reason` on its own is unambiguous anyway.
 from backend.core.reasons import Reason
-from backend.core.units import UnitPreference
 
 # ---------------------------------------------------------------------------
 # enums
@@ -110,11 +120,30 @@ class Profile(BaseModel):
     birth_date: date
     height_cm: float
     timezone: str = "America/Vancouver"
-    unit_preference: UnitPreference = UnitPreference.METRIC
+    unit_preference: units.UnitPreference = units.UnitPreference.METRIC
 
     def age_on(self, on: date) -> int:
-        had_birthday = (on.month, on.day) >= (self.birth_date.month, self.birth_date.day)
-        return on.year - self.birth_date.year - (0 if had_birthday else 1)
+        """How old this person was on a given date.
+
+        Subtracting the years is not enough on its own. Someone born in May is still 22
+        in April of their 23rd year -- their birthday has not happened yet -- so we take
+        a year back off when the date falls before the birthday.
+
+        Comparing (month, day) tuples works because Python compares them element by
+        element: it checks the month first, and only looks at the day if the months
+        are equal.
+        """
+        years_since_birth_year = on.year - self.birth_date.year
+
+        birthday_this_year = (self.birth_date.month, self.birth_date.day)
+        date_we_are_asking_about = (on.month, on.day)
+
+        birthday_has_happened_yet = date_we_are_asking_about >= birthday_this_year
+
+        if birthday_has_happened_yet:
+            return years_since_birth_year
+
+        return years_since_birth_year - 1
 
 
 class MacroTarget(BaseModel):
@@ -162,13 +191,26 @@ class MacroTotals(BaseModel):
         )
 
     def scale(self, factor: float) -> MacroTotals:
+        """Multiply everything by `factor` -- used to turn one serving into several."""
+        # Fiber and sodium are optional. Scaling an unknown value has to leave it
+        # unknown, so those two are handled separately from the rest.
+        if self.fiber_g is None:
+            scaled_fiber = None
+        else:
+            scaled_fiber = self.fiber_g * factor
+
+        if self.sodium_mg is None:
+            scaled_sodium = None
+        else:
+            scaled_sodium = self.sodium_mg * factor
+
         return MacroTotals(
             kcal=self.kcal * factor,
             protein_g=self.protein_g * factor,
             carbs_g=self.carbs_g * factor,
             fat_g=self.fat_g * factor,
-            fiber_g=None if self.fiber_g is None else self.fiber_g * factor,
-            sodium_mg=None if self.sodium_mg is None else self.sodium_mg * factor,
+            fiber_g=scaled_fiber,
+            sodium_mg=scaled_sodium,
         )
 
 

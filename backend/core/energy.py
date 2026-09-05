@@ -5,16 +5,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from datetime import date
 
-from backend.core.models import (
-    Activity,
-    ActivityKind,
-    BalanceResult,
-    BalanceState,
-    BmrFormula,
-    BmrResult,
-    Profile,
-)
-from backend.core.reasons import Reason, ReasonCode
+from backend.core import models
+from backend.core import reasons
 
 #: |balance| within this many kcal reads as maintenance rather than a real deficit/surplus.
 MAINTENANCE_BAND_KCAL = 100.0
@@ -25,12 +17,12 @@ TEF_FACTOR = 0.10
 
 
 def bmr(
-    profile: Profile,
+    profile: models.Profile,
     weight_kg: float,
     on: date,
     *,
     lean_mass_kg: float | None = None,
-) -> BmrResult:
+) -> models.BmrResult:
     """Basal metabolic rate, with the formula chosen by what data exists.
 
     Katch-McArdle when lean mass is known (more accurate, and sex-independent);
@@ -39,18 +31,26 @@ def bmr(
     """
     if lean_mass_kg is not None:
         kcal = 370.0 + 21.6 * lean_mass_kg
-        return BmrResult(
+        return models.BmrResult(
             kcal=kcal,
-            formula=BmrFormula.KATCH_MCARDLE,
-            reasons=[Reason(code=ReasonCode.BMR_FORMULA_KATCH_MCARDLE, metric="bmr", current=kcal)],
+            formula=models.BmrFormula.KATCH_MCARDLE,
+            reasons=[reasons.Reason(code=reasons.ReasonCode.BMR_FORMULA_KATCH_MCARDLE, metric="bmr", current=kcal)],
         )
     age = profile.age_on(on)
-    offset = 5.0 if profile.sex == "male" else -161.0
-    kcal = 10.0 * weight_kg + 6.25 * profile.height_cm - 5.0 * age + offset
-    return BmrResult(
+
+    # Mifflin-St Jeor is the same formula for everyone except its final constant, which
+    # differs by sex. Comparing against the Sex enum rather than the string "male" means
+    # a typo would be a crash instead of a silently wrong 166 kcal.
+    if profile.sex is models.Sex.MALE:
+        sex_constant = 5.0
+    else:
+        sex_constant = -161.0
+
+    kcal = (10.0 * weight_kg) + (6.25 * profile.height_cm) - (5.0 * age) + sex_constant
+    return models.BmrResult(
         kcal=kcal,
-        formula=BmrFormula.MIFFLIN_ST_JEOR,
-        reasons=[Reason(code=ReasonCode.BMR_FORMULA_MIFFLIN_ST_JEOR, metric="bmr", current=kcal)],
+        formula=models.BmrFormula.MIFFLIN_ST_JEOR,
+        reasons=[reasons.Reason(code=reasons.ReasonCode.BMR_FORMULA_MIFFLIN_ST_JEOR, metric="bmr", current=kcal)],
     )
 
 
@@ -78,9 +78,9 @@ def tdee_estimate(
     return total
 
 
-def resistance_minutes(activities: Sequence[Activity]) -> float:
+def resistance_minutes(activities: Sequence[models.Activity]) -> float:
     return sum(
-        a.duration_min or 0.0 for a in activities if a.kind is ActivityKind.RESISTANCE
+        a.duration_min or 0.0 for a in activities if a.kind is models.ActivityKind.RESISTANCE
     )
 
 
@@ -88,9 +88,9 @@ def energy_balance(
     burned_kcal: float,
     consumed_kcal: float,
     *,
-    activities: Sequence[Activity] = (),
+    activities: Sequence[models.Activity] = (),
     maintenance_band_kcal: float = MAINTENANCE_BAND_KCAL,
-) -> BalanceResult:
+) -> models.BalanceResult:
     """Consumed minus burned. Negative is a deficit.
 
     Surfaces the resistance-training caveat when relevant rather than hiding it: on
@@ -98,14 +98,14 @@ def energy_balance(
     """
     balance = consumed_kcal - burned_kcal
     if balance < -maintenance_band_kcal:
-        state, code = BalanceState.DEFICIT, ReasonCode.ENERGY_DEFICIT
+        state, code = models.BalanceState.DEFICIT, reasons.ReasonCode.ENERGY_DEFICIT
     elif balance > maintenance_band_kcal:
-        state, code = BalanceState.SURPLUS, ReasonCode.ENERGY_SURPLUS
+        state, code = models.BalanceState.SURPLUS, reasons.ReasonCode.ENERGY_SURPLUS
     else:
-        state, code = BalanceState.MAINTENANCE, ReasonCode.ENERGY_MAINTENANCE
+        state, code = models.BalanceState.MAINTENANCE, reasons.ReasonCode.ENERGY_MAINTENANCE
 
-    reasons = [
-        Reason(
+    balance_reasons = [
+        reasons.Reason(
             code=code,
             metric="energy_balance",
             current=balance,
@@ -119,19 +119,19 @@ def energy_balance(
     ]
     lifting = resistance_minutes(activities)
     if lifting > 0:
-        reasons.append(
-            Reason(
-                code=ReasonCode.RESISTANCE_CALORIES_UNRELIABLE,
+        balance_reasons.append(
+            reasons.Reason(
+                code=reasons.ReasonCode.RESISTANCE_CALORIES_UNRELIABLE,
                 metric="active_kcal",
                 detail={"minutes": round(lifting)},
             )
         )
-    return BalanceResult(
+    return models.BalanceResult(
         burned_kcal=burned_kcal,
         consumed_kcal=consumed_kcal,
         balance_kcal=balance,
         state=state,
-        reasons=reasons,
+        reasons=balance_reasons,
     )
 
 

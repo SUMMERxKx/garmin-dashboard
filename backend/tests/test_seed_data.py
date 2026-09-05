@@ -13,8 +13,8 @@ from pathlib import Path
 import pytest
 import yaml
 
+from backend.core import models
 from backend.core import nutrition
-from backend.core.models import Food, GoalType, MacroTarget, MacroTotals, ServingBasis
 
 SEED_DIR = Path(__file__).resolve().parents[2] / "seed"
 TEMPLATE = SEED_DIR / "food-library.template.yaml"
@@ -36,11 +36,11 @@ def seed(request: pytest.FixtureRequest) -> dict:
     return load(request.param)
 
 
-def to_food(raw: dict) -> Food:
-    return Food(
+def to_food(raw: dict) -> models.Food:
+    return models.Food(
         id=raw["id"], name=raw["name"], brand=raw.get("brand"),
         serving_desc=raw["serving_desc"], serving_g=raw.get("serving_g"),
-        serving_basis=ServingBasis(raw["serving_basis"]),
+        serving_basis=models.ServingBasis(raw["serving_basis"]),
         kcal=raw["kcal"], protein_g=raw["protein_g"],
         carbs_g=raw["carbs_g"], fat_g=raw["fat_g"],
         fiber_g=raw.get("fiber_g"), sodium_mg=raw.get("sodium_mg"),
@@ -60,8 +60,8 @@ def test_profile_matches_the_locked_values(seed: dict) -> None:
 
 def test_starting_target_is_internally_consistent(seed: dict) -> None:
     raw = seed["macro_targets"][0]
-    target = MacroTarget(
-        effective_from=raw["effective_from"], goal=GoalType(raw["goal"]),
+    target = models.MacroTarget(
+        effective_from=raw["effective_from"], goal=models.GoalType(raw["goal"]),
         kcal=raw["kcal"], protein_g=raw["protein_g"],
         carbs_g=raw["carbs_g"], fat_g=raw["fat_g"],
     )
@@ -78,7 +78,7 @@ def test_protein_target_is_appropriate_for_cutting(seed: dict) -> None:
 def test_every_food_declares_a_serving_basis(seed: dict) -> None:
     """The highest-impact field in the nutrition model -- it may never be implicit."""
     for food in seed["foods"]:
-        assert ServingBasis(food["serving_basis"]), food["id"]
+        assert models.ServingBasis(food["serving_basis"]), food["id"]
 
 
 def test_dry_weight_foods_are_marked_raw(seed: dict) -> None:
@@ -155,18 +155,18 @@ def test_the_default_day_is_short_on_fat_and_calories(working: dict) -> None:
     assert totals.kcal < target.kcal - 200
 
 
-def compute_default_day(seed: dict) -> tuple[MacroTotals, MacroTarget]:
+def compute_default_day(seed: dict) -> tuple[models.MacroTotals, models.MacroTarget]:
     """Sum the Normal Day template, treating unset servings as 1."""
     foods = {f["id"]: to_food(f) for f in seed["foods"]}
     meals = {m["id"]: m for m in seed["saved_meals"]}
-    totals = MacroTotals()
+    totals = models.MacroTotals()
     for meal_id in seed["day_templates"][0]["meals"]:
         for item in meals[meal_id]["items"]:
             servings = 1.0 if item["servings"] is None else float(item["servings"])
             totals = totals + nutrition.resolve_entry(foods[item["food_id"]], servings)
     raw = seed["macro_targets"][0]
-    target = MacroTarget(
-        effective_from=raw["effective_from"], goal=GoalType(raw["goal"]),
+    target = models.MacroTarget(
+        effective_from=raw["effective_from"], goal=models.GoalType(raw["goal"]),
         kcal=raw["kcal"], protein_g=raw["protein_g"],
         carbs_g=raw["carbs_g"], fat_g=raw["fat_g"],
     )
