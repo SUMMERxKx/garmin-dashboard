@@ -168,3 +168,32 @@ def read_float(data: Any, path: str) -> float | None:
 def read_integer(data: Any, path: str) -> int | None:
     """Read a path and convert whatever is there to a whole number, or None."""
     return as_optional_integer(read_path(data, path))
+
+
+def as_optional_text(value: Any) -> str | None:
+    """Turn a value into text, or None if it is not text worth keeping.
+
+    Unlike the number conversions above, this one refuses to convert. A number, a list
+    or a dictionary arriving where a name was expected means our path is wrong, and
+    turning 348.0 into the string "348.0" would hide that instead of showing it.
+
+    Empty text and whitespace become None as well, because Garmin fills some optional
+    names with "" rather than leaving them out, and an empty string is not a reading.
+    """
+    if value is None:
+        return None
+
+    if not isinstance(value, str):
+        return None
+
+    text_without_padding = value.strip()
+
+    if text_without_padding == "":
+        return None
+
+    return text_without_padding
+
+
+def read_text(data: Any, path: str) -> str | None:
+    """Read a path and return the text that is there, or None."""
+    return as_optional_text(read_path(data, path))

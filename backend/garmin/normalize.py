@@ -34,6 +34,10 @@ from backend.garmin import json_paths
 #: more than 500 kg, and nobody's weight in grams is below 500.
 GRAMS_THRESHOLD = 500.0
 
+#: How Garmin writes a timestamp: "2026-09-12 15:06:55". Named here rather than buried
+#: in the parsing call, because it is a fact about their format, not about our code.
+LOCAL_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
+
 #: How many seconds in a minute. Named rather than written as a bare 60 in the middle of
 #: a calculation, so the conversion says out loud what it is doing.
 SECONDS_PER_MINUTE = 60.0
@@ -101,6 +105,18 @@ class ValueReader:
         return value
 
 
+    def read_text(self, field_name: str, endpoint_name: str, path: str) -> str | None:
+        """Read one piece of text, recording its source if it was there."""
+        response = self.saved_responses.get(endpoint_name)
+
+        value = json_paths.read_text(response, path)
+
+        if value is not None:
+            self.provenance[field_name] = f"{endpoint_name} -> {path}"
+
+        return value
+
+
 @dataclasses.dataclass
 class Energy:
     """Calories in and out, and the movement behind them."""
@@ -147,6 +163,60 @@ class Body:
 
 
 @dataclasses.dataclass
+class Activity:
+    """One workout, in our shape rather than Garmin's.
+
+    A day has a list of these, and an empty list is the normal case: most days have no
+    recorded workout at all. Absence here is a rest day, not a failed sync, which is
+    why activities are deliberately left out of the day's field count.
+
+    Garmin sends about ninety fields per activity. Most are either specific to a sport
+    we do not do (dive gases, elevation correction), duplicated under two names
+    (`favorite` and `isFavorite`), or personal rather than measured -- the owner's full
+    name, profile photo URLs, and the device id all travel in that payload. None of
+    those are copied here. What is kept is what an energy-balance and recovery picture
+    actually needs.
+    """
+
+    name: str | None = None
+    type_key: str | None = None
+    started_at_local: datetime.datetime | None = None
+    duration_minutes: float | None = None
+    distance_metres: float | None = None
+    total_kilocalories: int | None = None
+    resting_kilocalories: int | None = None
+    average_heart_rate: int | None = None
+    maximum_heart_rate: int | None = None
+    steps: int | None = None
+    aerobic_training_effect: float | None = None
+    anaerobic_training_effect: float | None = None
+
+    #: field name -> where the value came from, exactly as on the daily snapshot.
+    provenance: dict[str, str] = dataclasses.field(default_factory=dict)
+
+    def active_kilocalories(self) -> int | None:
+        """DERIVED, not measured: the calories above what resting would have cost.
+
+        Garmin reports `calories` for a workout as the gross figure -- everything the
+        body spent during that window, including the resting burn that would have
+        happened on the sofa anyway. `bmrCalories` is that resting portion. The
+        difference is the part the workout is actually responsible for.
+
+        It is a method rather than a field on purpose. A field would sit in the same
+        list as the measured numbers and, a month from now, read exactly like one of
+        them. This is ours, computed from two of Garmin's, and the shape of the code
+        should say so without needing a comment at every use site.
+        """
+        if self.total_kilocalories is None:
+            return None
+
+        if self.resting_kilocalories is None:
+            return None
+
+        return self.total_kilocalories - self.resting_kilocalories
+
+
+@dataclasses.dataclass
 class DailySnapshot:
     """One day, in our shape rather than Garmin's."""
 
@@ -155,6 +225,9 @@ class DailySnapshot:
     sleep: Sleep
     recovery: Recovery
     body: Body
+
+    #: Every workout recorded on this day, oldest first. Empty on a rest day.
+    activities: list[Activity] = dataclasses.field(default_factory=list)
 
     #: field name -> where the value came from, for every field that was found.
     provenance: dict[str, str] = dataclasses.field(default_factory=dict)
@@ -169,6 +242,11 @@ class DailySnapshot:
         This is the number worth watching over time. A day that suddenly drops from
         twenty fields to four is a broken sync, even though every endpoint returned a
         perfectly successful response.
+
+        Activities are deliberately not counted. They come and go with whether there
+        was a workout, so including them would make the number move for an ordinary
+        reason and destroy its value as an alarm: a rest day would look like a fault.
+        The fields counted here are the ones the watch reports every single day.
         """
         return len(self.provenance)
 
@@ -276,6 +354,119 @@ def read_body(reader: ValueReader) -> Body:
     )
 
 
+def parse_local_start_time(start_time_text: str | None) -> datetime.datetime | None:
+    """Turn Garmin's "2026-09-12 15:06:55" into a datetime, or None.
+
+    Garmin sends two start times for every activity: `startTimeGMT` and
+    `startTimeLocal`. We read the local one, because the question a person asks of a
+    workout is "was that the morning session or the evening one?", and in GMT a
+    Vancouver evening run lands on the following day.
+
+    Neither string carries a timezone, so what comes back is a naive datetime -- a wall
+    clock reading with no offset attached. That is honest about what Garmin gave us.
+    Attaching a timezone here would mean inventing one.
+    """
+    if start_time_text is None:
+        return None
+
+    try:
+        return datetime.datetime.strptime(start_time_text, LOCAL_TIME_FORMAT)
+    except ValueError:
+        # An unparseable timestamp is a missing reading, not a reason to lose the whole
+        # activity. The calories and heart rate beside it are still perfectly good.
+        return None
+
+
+def read_one_activity(one_activity: dict[str, Any], position_in_list: int) -> Activity:
+    """Turn one entry from the `activities` response into an Activity.
+
+    `position_in_list` is only used to write a provenance line that points at the right
+    entry, so a surprising number can be traced back to the exact activity it came from
+    rather than to "somewhere in the list".
+    """
+    # The same ValueReader as the daily fields, pointed at one activity. Reusing it
+    # keeps the rule that reading a value and recording its source are one step.
+    reader = ValueReader({f"activities[{position_in_list}]": one_activity})
+    source = f"activities[{position_in_list}]"
+
+    return Activity(
+        name=reader.read_text("name", source, "activityName"),
+        # `activityType.typeKey`, not `activityName`: the name is free text the user can
+        # edit to anything, while the type key is Garmin's own vocabulary and is what
+        # any later rule about lifting versus running has to be built on.
+        type_key=reader.read_text("type_key", source, "activityType.typeKey"),
+        started_at_local=parse_local_start_time(
+            reader.read_text("started_at_local", source, "startTimeLocal")
+        ),
+        duration_minutes=seconds_to_minutes(
+            reader.read_number("duration_minutes", source, "duration")
+        ),
+        distance_metres=reader.read_number("distance_metres", source, "distance"),
+        total_kilocalories=reader.read_whole_number(
+            "total_kilocalories", source, "calories"
+        ),
+        resting_kilocalories=reader.read_whole_number(
+            "resting_kilocalories", source, "bmrCalories"
+        ),
+        average_heart_rate=reader.read_whole_number("average_heart_rate", source, "averageHR"),
+        maximum_heart_rate=reader.read_whole_number("maximum_heart_rate", source, "maxHR"),
+        steps=reader.read_whole_number("steps", source, "steps"),
+        aerobic_training_effect=reader.read_number(
+            "aerobic_training_effect", source, "aerobicTrainingEffect"
+        ),
+        anaerobic_training_effect=reader.read_number(
+            "anaerobic_training_effect", source, "anaerobicTrainingEffect"
+        ),
+        provenance=reader.provenance,
+    )
+
+
+def read_activities(saved_responses: dict[str, Any]) -> list[Activity]:
+    """Read every workout recorded on this day, earliest first.
+
+    The `activities` endpoint answers with a list rather than an object, and on most
+    days that list is empty. An empty list here means "no workout", which is a fact
+    about the day rather than a gap in the data.
+    """
+    response = saved_responses.get("activities")
+
+    if not isinstance(response, list):
+        # Either the endpoint was never fetched, or it answered with something that is
+        # not a list. Both mean we have no activities to report.
+        return []
+
+    activities = []
+
+    for position_in_list, one_activity in enumerate(response):
+        if not isinstance(one_activity, dict):
+            continue
+
+        activities.append(read_one_activity(one_activity, position_in_list))
+
+    return sort_by_start_time(activities)
+
+
+def sort_by_start_time(activities: list[Activity]) -> list[Activity]:
+    """Put the earliest workout first, with any undated ones at the end.
+
+    Sorting cannot simply compare the start times, because one of them may be None and
+    Python refuses to compare None with a datetime. Rather than dropping those, they
+    are pushed to the end, where an activity we know less about belongs.
+    """
+    with_a_time = []
+    without_a_time = []
+
+    for one_activity in activities:
+        if one_activity.started_at_local is None:
+            without_a_time.append(one_activity)
+        else:
+            with_a_time.append(one_activity)
+
+    with_a_time.sort(key=lambda one_activity: one_activity.started_at_local)
+
+    return with_a_time + without_a_time
+
+
 def normalize_day(
     saved_responses: dict[str, Any],
     day: datetime.date,
@@ -295,11 +486,16 @@ def normalize_day(
     recovery = read_recovery(reader)
     body = read_body(reader)
 
+    # Read separately, with their own readers, so that a day's workouts never land in
+    # the daily provenance and move the field count about.
+    activities = read_activities(saved_responses)
+
     return DailySnapshot(
         day=day,
         energy=energy,
         sleep=sleep,
         recovery=recovery,
         body=body,
+        activities=activities,
         provenance=reader.provenance,
     )

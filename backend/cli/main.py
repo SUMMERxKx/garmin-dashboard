@@ -46,6 +46,9 @@ METRES_PER_KILOMETRE = 1000.0
 #: Minutes in an hour, for the same reason.
 MINUTES_PER_HOUR = 60
 
+#: Seconds in a minute, used to turn a fractional pace into mm:ss.
+SECONDS_PER_MINUTE = 60
+
 
 def count_possible_fields() -> int:
     """How many fields a perfect day would have values for.
@@ -161,6 +164,94 @@ def print_energy(energy: normalize.Energy) -> None:
     print_line("intensity minutes", f"{moderate} moderate / {vigorous} vigorous")
 
 
+def show_pace(duration_minutes: float | None, distance_metres: float | None) -> str:
+    """Minutes per kilometre, the unit a run is actually read in.
+
+    Garmin reports speed in metres per second, which nobody thinks in. This is derived
+    from duration and distance rather than read from `averageSpeed`, so that the pace on
+    screen always agrees with the two numbers printed directly above it.
+    """
+    if duration_minutes is None:
+        return NOTHING_TO_SHOW
+
+    if distance_metres is None:
+        return NOTHING_TO_SHOW
+
+    # A lifting session records no distance. Dividing by it would crash, and a pace for
+    # a session that did not move anywhere would be meaningless even if it did not.
+    if distance_metres <= 0:
+        return NOTHING_TO_SHOW
+
+    kilometres = distance_metres / METRES_PER_KILOMETRE
+    minutes_per_kilometre = duration_minutes / kilometres
+
+    whole_minutes = int(minutes_per_kilometre)
+    seconds = round((minutes_per_kilometre - whole_minutes) * SECONDS_PER_MINUTE)
+
+    return f"{whole_minutes}:{seconds:02d} /km"
+
+
+def print_one_activity(activity: normalize.Activity) -> None:
+    """Print one workout."""
+    if activity.started_at_local is None:
+        started = NOTHING_TO_SHOW
+    else:
+        started = activity.started_at_local.strftime("%H:%M")
+
+    # The name is free text the user can edit; the type key is Garmin's own vocabulary.
+    # Printing both means a renamed activity is still identifiable.
+    name = activity.name or NOTHING_TO_SHOW
+    type_key = activity.type_key or NOTHING_TO_SHOW
+
+    print()
+    print(f"  {started}  {name}  ({type_key})")
+
+    print_line("  duration", show_duration(activity.duration_minutes))
+
+    if activity.distance_metres is None or activity.distance_metres <= 0:
+        # A lifting session covers no ground. Saying so beats printing "0.0 km".
+        print_line("  distance", NOTHING_TO_SHOW)
+    else:
+        kilometres = activity.distance_metres / METRES_PER_KILOMETRE
+        print_line("  distance", show_number(kilometres, "km", decimal_places=2))
+        print_line("  pace", show_pace(activity.duration_minutes, activity.distance_metres))
+
+    # The active figure is ours, subtracted from two of Garmin's, so it is labelled.
+    # The gross number is printed beside it rather than instead of it, because that is
+    # the one the Garmin Connect app shows and the two must be reconcilable by eye.
+    active = show_number(activity.active_kilocalories(), "kcal")
+    gross = show_number(activity.total_kilocalories, "kcal")
+    print_line("  calories (active)", f"{active}   [{gross} gross, ours = gross - resting]")
+
+    average = show_number(activity.average_heart_rate, "bpm")
+    maximum = show_number(activity.maximum_heart_rate, "bpm")
+    print_line("  heart rate", f"{average} average / {maximum} max")
+
+    aerobic = show_number(activity.aerobic_training_effect, decimal_places=1)
+    anaerobic = show_number(activity.anaerobic_training_effect, decimal_places=1)
+    print_line("  training effect", f"{aerobic} aerobic / {anaerobic} anaerobic")
+
+
+def print_activities(activities: list[normalize.Activity]) -> None:
+    """Print every workout on this day, or say plainly that there was not one."""
+    print_heading("ACTIVITIES")
+
+    if not activities:
+        # An empty list is a fact about the day, not a gap in the data, and it should
+        # not read like one.
+        print("  no workout recorded -- rest day")
+        return
+
+    for one_activity in activities:
+        print_one_activity(one_activity)
+
+    print()
+    # Worth saying every time. These calories are a breakdown of the day's active
+    # total, not an addition to it: Garmin has already counted them there. Adding a
+    # workout's calories on top would double-count the largest number of the day.
+    print("  (already counted inside the day's active calories, not on top of them)")
+
+
 def print_sleep(sleep: normalize.Sleep) -> None:
     """Print last night."""
     print_heading("SLEEP")
@@ -246,6 +337,20 @@ def print_provenance(snapshot: normalize.DailySnapshot) -> None:
     for field_name in field_names:
         print_line(field_name, snapshot.provenance[field_name], label_width=column_width)
 
+    # Each activity keeps its own provenance, because the daily one deliberately does
+    # not carry them. Listed under its own heading so the source of a workout number is
+    # traceable in exactly the same way.
+    for one_activity in snapshot.activities:
+        print()
+        print(f"  {one_activity.name or NOTHING_TO_SHOW}:")
+
+        for field_name in sorted(one_activity.provenance):
+            print_line(
+                field_name,
+                one_activity.provenance[field_name],
+                label_width=column_width,
+            )
+
 
 def print_snapshot(snapshot: normalize.DailySnapshot, show_provenance: bool) -> None:
     """Print one whole day."""
@@ -268,6 +373,9 @@ def print_snapshot(snapshot: normalize.DailySnapshot, show_provenance: bool) -> 
     print(f"   {fields_found} of {fields_possible} fields filled in")
 
     print_energy(snapshot.energy)
+    # Directly after energy, because a workout is the explanation for the day's active
+    # calories sitting where they are.
+    print_activities(snapshot.activities)
     print_sleep(snapshot.sleep)
     print_recovery(snapshot.recovery)
     print_body(snapshot.body)
