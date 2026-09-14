@@ -27,10 +27,13 @@ import argparse
 import dataclasses
 import datetime
 
+from backend.food import library
+from backend.food import log
 from backend.garmin import normalize
 from backend.garmin import raw_files
 from backend.store import database
 from backend.store import day_store
+from backend.store import food_store
 
 #: What to print where a value is missing. Every field in a snapshot can genuinely be
 #: absent -- a watch left on the charger is a normal Tuesday -- so this is a normal
@@ -268,6 +271,131 @@ def print_activities(activities: list[normalize.Activity]) -> None:
     print("  (already counted inside the day's active calories, not on top of them)")
 
 
+#: The narrowest the INTAKE label column is allowed to get, so a day with two short
+#: entries still lines up with the sections above and below it.
+INTAKE_LABEL_WIDTH = 34
+
+
+def describe_entry(one_entry: log.LoggedFood) -> str:
+    """How one logged entry is named on screen.
+
+    The serving basis is printed on every line rather than assumed, because
+    raw-versus-cooked is the largest accuracy risk in the whole food log: logging
+    cooked rice against dry macros over-counts by 2.5-3x, which is more than an entire
+    day's deficit. It stays visible so a mismatch is caught by eye.
+    """
+    return f"{one_entry.food_name} x{one_entry.servings:g} ({one_entry.serving_basis})"
+
+
+def print_intake(
+    entries: list[log.LoggedFood],
+    target: library.MacroTarget | None,
+) -> None:
+    """Print what was eaten, and how it sits against the target.
+
+    Printed directly under ENERGY because the pair is the entire point of the project:
+    calories out on their own are trivia, calories in on their own are a diary. Only
+    together are they a measurement.
+    """
+    print_heading("INTAKE")
+
+    if not entries:
+        print("  nothing logged")
+        return
+
+    # Sized to the longest line actually present, so a long food name cannot run into
+    # its own numbers. The floor keeps short days looking like the rest of the screen.
+    descriptions = [describe_entry(one_entry) for one_entry in entries]
+    column_width = max(INTAKE_LABEL_WIDTH, max(len(one) for one in descriptions) + 2)
+
+    for one_entry in entries:
+        description = describe_entry(one_entry)
+
+        macros = (
+            f"{one_entry.kilocalories:.0f} kcal"
+            f"  {one_entry.protein_grams:.0f} P"
+            f"  {one_entry.carbohydrate_grams:.0f} C"
+            f"  {one_entry.fat_grams:.0f} F"
+        )
+
+        print_line(description, macros, label_width=column_width)
+
+    totals = log.total_up(entries)
+
+    print()
+    print_line(
+        f"total ({totals.number_of_entries} items)",
+        f"{totals.kilocalories:.0f} kcal"
+        f"  {totals.protein_grams:.0f} P"
+        f"  {totals.carbohydrate_grams:.0f} C"
+        f"  {totals.fat_grams:.0f} F",
+        label_width=column_width,
+    )
+
+    if target is None:
+        return
+
+    print_line(
+        "target",
+        f"{target.kilocalories:.0f} kcal"
+        f"  {target.protein_grams:.0f} P"
+        f"  {target.carbohydrate_grams:.0f} C"
+        f"  {target.fat_grams:.0f} F",
+        label_width=column_width,
+    )
+
+    left = log.remaining_against(totals, target)
+
+    # A positive number is still to eat, a negative one is over. The sign is kept
+    # rather than being replaced with the words "left" and "over", so the column
+    # stays readable straight down.
+    print_line(
+        "remaining",
+        f"{left.kilocalories:+.0f} kcal"
+        f"  {left.protein_grams:+.0f} P"
+        f"  {left.carbohydrate_grams:+.0f} C"
+        f"  {left.fat_grams:+.0f} F",
+        label_width=column_width,
+    )
+
+
+def print_energy_balance(
+    entries: list[log.LoggedFood],
+    energy: normalize.Energy,
+) -> None:
+    """Print intake minus expenditure, when both are actually known.
+
+    Nothing is estimated here. If either side is missing the section says so, because a
+    balance computed against a guess is worse than no balance: it looks exactly as
+    confident as a real one.
+
+    Both numbers carry known error -- Garmin overstates resistance-training calories,
+    and a food log is only as good as the weighing. The honest use of this figure is as
+    a trend across weeks against measured weight, not as a verdict on one day.
+    """
+    print_heading("ENERGY BALANCE")
+
+    if not entries:
+        print("  nothing logged, so there is nothing to compare")
+        return
+
+    if energy.total_kilocalories is None:
+        print("  no Garmin expenditure for this day, so there is nothing to compare")
+        return
+
+    eaten = log.total_up(entries).kilocalories
+    burned = float(energy.total_kilocalories)
+    balance = eaten - burned
+
+    print_line("eaten", f"{eaten:.0f} kcal")
+    print_line("burned (Garmin)", f"{burned:.0f} kcal")
+
+    if balance < 0:
+        print_line("balance", f"{balance:+.0f} kcal   deficit")
+    else:
+        print_line("balance", f"{balance:+.0f} kcal   surplus")
+
+
 def print_sleep(sleep: normalize.Sleep) -> None:
     """Print last night."""
     print_heading("SLEEP")
@@ -375,7 +503,12 @@ def print_provenance(snapshot: normalize.DailySnapshot) -> None:
             )
 
 
-def print_snapshot(snapshot: normalize.DailySnapshot, show_provenance: bool) -> None:
+def print_snapshot(
+    snapshot: normalize.DailySnapshot,
+    show_provenance: bool,
+    entries: list[log.LoggedFood],
+    target: library.MacroTarget | None,
+) -> None:
     """Print one whole day."""
     # "Friday 12 September 2026" rather than "2026-09-12", because a weekday is what
     # makes a day recognisable -- a bad night is much easier to place once you can see
@@ -396,8 +529,10 @@ def print_snapshot(snapshot: normalize.DailySnapshot, show_provenance: bool) -> 
     print(f"   {fields_found} of {fields_possible} fields filled in")
 
     print_energy(snapshot.energy)
-    # Directly after energy, because a workout is the explanation for the day's active
-    # calories sitting where they are.
+    print_intake(entries, target)
+    print_energy_balance(entries, snapshot.energy)
+    # After the three numbers it explains: a workout is the reason the day's active
+    # calories sit where they do.
     print_activities(snapshot.activities)
     print_sleep(snapshot.sleep)
     print_recovery(snapshot.recovery)
@@ -600,6 +735,140 @@ def run_days(how_many_days: int) -> int:
     return 0
 
 
+def run_foods() -> int:
+    """List the food library, and say plainly if anything in it is wrong."""
+    whole_library = library.load_library()
+
+    print()
+    print(f"  {len(whole_library.foods)} foods, {len(whole_library.meals)} saved meals,"
+          f" {len(whole_library.templates)} day template(s)")
+
+    if whole_library.provisional:
+        # Worth saying every time it is printed. Provisional numbers look exactly like
+        # real ones on screen, and a dashboard built on typical published values rather
+        # than your actual labels is confidently wrong.
+        print("  !! values are PROVISIONAL -- replace them from your own product labels")
+
+    print()
+    print(build_food_row("id", "food", "serving", "basis", "kcal", "P", "C", "F"))
+    print("  " + "-" * (len(build_food_row("", "", "", "", "", "", "", "")) - 2))
+
+    for one_food in sorted(whole_library.foods.values(), key=lambda f: f.food_id):
+        print(
+            build_food_row(
+                one_food.food_id,
+                one_food.name,
+                one_food.serving_description,
+                one_food.serving_basis,
+                show_number(one_food.kilocalories),
+                show_number(one_food.protein_grams, decimal_places=1),
+                show_number(one_food.carbohydrate_grams, decimal_places=1),
+                show_number(one_food.fat_grams, decimal_places=1),
+            )
+        )
+
+    print()
+
+    problems = library.find_problems(whole_library)
+
+    if problems:
+        print("  PROBLEMS:")
+        for one_problem in problems:
+            print(f"    - {one_problem}")
+        print()
+        return 1
+
+    return 0
+
+
+def run_log(food_id: str, servings: float, date_text: str | None) -> int:
+    """Log one food.
+
+    Defaults to TODAY, unlike the viewing commands, which default to yesterday. The
+    reason for the difference: you view a finished day, but you log food as you eat it.
+    """
+    if date_text is None:
+        day = datetime.date.today()
+    else:
+        try:
+            day = datetime.date.fromisoformat(date_text)
+        except ValueError:
+            print(f"'{date_text}' is not a date. Use the form 2026-09-12.")
+            return 1
+
+    if servings <= 0:
+        print("Servings must be greater than zero.")
+        return 1
+
+    whole_library = library.load_library()
+    one_food = whole_library.foods.get(food_id)
+
+    if one_food is None:
+        print(f"No food called '{food_id}' in the library.")
+        print("See what is there:")
+        print("    .venv/bin/python -m backend.cli.main foods")
+        return 1
+
+    entry = log.portion_of(one_food, servings)
+
+    # The clock is read HERE, at the edge, and never inside `log.py`. A function that
+    # reads the clock cannot be tested, because its answer changes every time it runs.
+    entry.logged_at = datetime.datetime.now()
+
+    open_database = database.Database()
+    food_store.save_entry(open_database, day, entry)
+    entries = food_store.load_entries_for_day(open_database, day)
+    open_database.close()
+
+    grams = entry.grams(one_food)
+
+    print()
+    print(f"  logged  {one_food.name}  x{servings:g}"
+          f"  ({grams:.0f} g {one_food.serving_basis})")
+    print(f"          {entry.kilocalories:.0f} kcal"
+          f"  {entry.protein_grams:.1f} P"
+          f"  {entry.carbohydrate_grams:.1f} C"
+          f"  {entry.fat_grams:.1f} F")
+
+    totals = log.total_up(entries)
+    target = whole_library.target_in_force_on(day)
+
+    if target is None:
+        print()
+        print(f"  day total: {totals.kilocalories:.0f} kcal")
+        print()
+        return 0
+
+    left = log.remaining_against(totals, target)
+
+    print()
+    print(f"  day so far: {totals.kilocalories:.0f} / {target.kilocalories:.0f} kcal"
+          f"   left: {left.kilocalories:.0f} kcal,"
+          f" {left.protein_grams:.0f} P,"
+          f" {left.carbohydrate_grams:.0f} C,"
+          f" {left.fat_grams:.0f} F")
+    print()
+
+    return 0
+
+
+def build_food_row(*cells: str) -> str:
+    """Lay out one row of the `foods` table."""
+    widths = [18, 25, 18, 9, 6, 6, 6, 6]
+
+    laid_out = []
+
+    for position, one_cell in enumerate(cells):
+        width = widths[position]
+
+        if position <= 2:
+            laid_out.append(one_cell.ljust(width))
+        else:
+            laid_out.append(one_cell.rjust(width))
+
+    return "  " + "  ".join(laid_out)
+
+
 def build_argument_parser() -> argparse.ArgumentParser:
     """Describe the commands this tool accepts.
 
@@ -637,6 +906,26 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="import one day only, as YYYY-MM-DD (default: every saved day)",
     )
 
+    subcommands.add_parser(
+        "foods",
+        help="list the food library and check it for mistakes",
+    )
+
+    log_command = subcommands.add_parser(
+        "log",
+        help="log a food you have eaten",
+    )
+    log_command.add_argument("food_id", help="which food, e.g. whey-protein")
+    log_command.add_argument(
+        "servings",
+        type=float,
+        help="how many servings, e.g. 1.5",
+    )
+    log_command.add_argument(
+        "--date",
+        help="the day to log it against, as YYYY-MM-DD (default: today)",
+    )
+
     days_command = subcommands.add_parser(
         "days",
         help="one line per stored day, to see a span at a glance",
@@ -666,6 +955,12 @@ def main() -> int:
         parser.print_help()
         return 1
 
+    if arguments.command == "foods":
+        return run_foods()
+
+    if arguments.command == "log":
+        return run_log(arguments.food_id, arguments.servings, arguments.date)
+
     if arguments.command == "days":
         return run_days(arguments.days)
 
@@ -692,13 +987,36 @@ def main() -> int:
     # ordinary situation it is.
     saved_responses = raw_files.load_whole_day(day)
 
-    if not saved_responses:
+    # The Garmin side comes off the disk; the food side comes out of the database.
+    # Two different stores because they are two different kinds of fact: one is an
+    # observation we were handed, the other is something you typed.
+    open_database = database.Database()
+    entries = food_store.load_entries_for_day(open_database, day)
+    open_database.close()
+
+    # Only give up when there is nothing at all. Today is the ordinary case here: you
+    # have logged breakfast, and Garmin has nothing yet because the day is not over and
+    # the watch has not been fetched. Refusing to show the food you just typed, because
+    # the OTHER half of the day is missing, would be exactly backwards.
+    if not saved_responses and not entries:
         explain_that_the_day_is_missing(day)
         return 1
 
     snapshot = normalize.normalize_day(saved_responses, day)
 
-    print_snapshot(snapshot, show_provenance=arguments.provenance)
+    if not saved_responses:
+        print()
+        print(f"  (no Garmin data for {day.isoformat()} yet -- showing the food log only)")
+
+    whole_library = library.load_library()
+    target = whole_library.target_in_force_on(day)
+
+    print_snapshot(
+        snapshot,
+        show_provenance=arguments.provenance,
+        entries=entries,
+        target=target,
+    )
 
     return 0
 
