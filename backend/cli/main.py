@@ -852,6 +852,274 @@ def run_log(food_id: str, servings: float, date_text: str | None) -> int:
     return 0
 
 
+def work_out_serving_overrides(set_arguments: list[str] | None) -> dict[str, float] | None:
+    """Turn `--set rice-jasmine=1.25` options into food_id -> servings.
+
+    Returns None if one of them is malformed, having already said which. A meal with a
+    variable amount asks a question, and a badly typed answer must not be treated as no
+    answer.
+    """
+    overrides = {}
+
+    if set_arguments is None:
+        return overrides
+
+    for one_argument in set_arguments:
+        if "=" not in one_argument:
+            print(f"'{one_argument}' should look like food-id=servings, e.g. rice-jasmine=1.25")
+            return None
+
+        food_id, servings_text = one_argument.split("=", 1)
+
+        try:
+            overrides[food_id] = float(servings_text)
+        except ValueError:
+            print(f"'{servings_text}' is not a number of servings.")
+            return None
+
+    return overrides
+
+
+def store_entries(
+    day: datetime.date,
+    entries: list[log.LoggedFood],
+    replace_existing: bool,
+) -> int:
+    """Write a batch of entries to a day, optionally clearing it first.
+
+    Returns how many were stored. Each entry gets its own timestamp a second apart,
+    because the timestamp is part of the storage key: written at the same instant, the
+    second entry would replace the first and a meal would silently lose items.
+    """
+    open_database = database.Database()
+
+    if replace_existing:
+        removed = food_store.remove_whole_day(open_database, day)
+        if removed:
+            print(f"  cleared {removed} existing entr(ies) for {day.isoformat()}")
+
+    moment = datetime.datetime.now()
+
+    for position, one_entry in enumerate(entries):
+        one_entry.logged_at = moment + datetime.timedelta(seconds=position)
+        food_store.save_entry(open_database, day, one_entry)
+
+    open_database.close()
+
+    return len(entries)
+
+
+def day_already_has_food(day: datetime.date) -> int:
+    """How many entries are already logged for a day."""
+    open_database = database.Database()
+    existing = food_store.load_entries_for_day(open_database, day)
+    open_database.close()
+
+    return len(existing)
+
+
+def refuse_to_double_log(day: datetime.date, already_there: int, command: str) -> None:
+    """Explain that a day already has food, and how to say what you meant.
+
+    Logging a whole day is the one command where a careless repeat is expensive: you end
+    up with two breakfasts and a day that reads 4,600 kcal. So it stops and asks rather
+    than guessing.
+    """
+    print()
+    print(f"{day.isoformat()} already has {already_there} entr(ies) logged.")
+    print()
+    print("  to start the day again:   " + command + " --replace")
+    print("  to add to what is there:  " + command + " --add")
+    print()
+
+
+def run_meal(
+    meal_id: str,
+    date_text: str | None,
+    set_arguments: list[str] | None,
+) -> int:
+    """Log one saved meal."""
+    day = work_out_day_for_logging(date_text)
+
+    if day is None:
+        return 1
+
+    whole_library = library.load_library()
+    one_meal = whole_library.meals.get(meal_id)
+
+    if one_meal is None:
+        print(f"No saved meal called '{meal_id}'.")
+        print("There is: " + ", ".join(sorted(whole_library.meals)))
+        return 1
+
+    overrides = work_out_serving_overrides(set_arguments)
+
+    if overrides is None:
+        return 1
+
+    entries, unanswered = log.expand_meal(one_meal, whole_library, overrides)
+
+    if unanswered:
+        print(f"Cannot log '{meal_id}' yet:")
+        for one_problem in unanswered:
+            print(f"  - {one_problem}")
+        print()
+        print("Say how much, like:")
+        print(f"    .venv/bin/python -m backend.cli.main meal {meal_id} --set rice-jasmine=1")
+        return 1
+
+    store_entries(day, entries, replace_existing=False)
+
+    print()
+    print(f"  logged {one_meal.name}: {len(entries)} item(s) on {day.isoformat()}")
+    print_day_running_total(day, whole_library)
+
+    return 0
+
+
+def run_template(
+    template_id: str,
+    date_text: str | None,
+    set_arguments: list[str] | None,
+    replace_existing: bool,
+    add_to_existing: bool,
+) -> int:
+    """Log a whole day from a template. The point of a fixed diet."""
+    day = work_out_day_for_logging(date_text)
+
+    if day is None:
+        return 1
+
+    whole_library = library.load_library()
+    one_template = whole_library.templates.get(template_id)
+
+    if one_template is None:
+        print(f"No day template called '{template_id}'.")
+        print("There is: " + ", ".join(sorted(whole_library.templates)))
+        return 1
+
+    overrides = work_out_serving_overrides(set_arguments)
+
+    if overrides is None:
+        return 1
+
+    already_there = day_already_has_food(day)
+
+    if already_there and not replace_existing and not add_to_existing:
+        refuse_to_double_log(
+            day,
+            already_there,
+            f".venv/bin/python -m backend.cli.main template {template_id}",
+        )
+        return 1
+
+    all_entries = []
+    all_unanswered = []
+
+    for meal_id in one_template.meal_ids:
+        one_meal = whole_library.meals.get(meal_id)
+
+        if one_meal is None:
+            all_unanswered.append(f"meal '{meal_id}' is not in the library")
+            continue
+
+        entries, unanswered = log.expand_meal(one_meal, whole_library, overrides)
+
+        all_entries.extend(entries)
+        all_unanswered.extend(unanswered)
+
+    if all_unanswered:
+        print(f"Cannot log '{template_id}' yet:")
+        for one_problem in all_unanswered:
+            print(f"  - {one_problem}")
+        return 1
+
+    print()
+    stored = store_entries(day, all_entries, replace_existing=replace_existing)
+    print(f"  logged {one_template.name}: {stored} item(s) on {day.isoformat()}")
+    print_day_running_total(day, whole_library)
+
+    return 0
+
+
+def run_copy_yesterday(date_text: str | None, replace_existing: bool, add_to_existing: bool) -> int:
+    """Copy yesterday's food onto today.
+
+    Deliberately copies the ENTRIES rather than re-applying a template: if you ate
+    something different yesterday, copying reproduces what you actually ate, not what
+    the template says you usually eat.
+    """
+    day = work_out_day_for_logging(date_text)
+
+    if day is None:
+        return 1
+
+    previous_day = day - datetime.timedelta(days=1)
+
+    open_database = database.Database()
+    yesterdays_entries = food_store.load_entries_for_day(open_database, previous_day)
+    open_database.close()
+
+    if not yesterdays_entries:
+        print(f"Nothing logged on {previous_day.isoformat()}, so there is nothing to copy.")
+        return 1
+
+    already_there = day_already_has_food(day)
+
+    if already_there and not replace_existing and not add_to_existing:
+        refuse_to_double_log(
+            day,
+            already_there,
+            ".venv/bin/python -m backend.cli.main copy-yesterday",
+        )
+        return 1
+
+    print()
+    stored = store_entries(day, yesterdays_entries, replace_existing=replace_existing)
+    print(f"  copied {stored} item(s) from {previous_day.isoformat()} to {day.isoformat()}")
+
+    print_day_running_total(day, library.load_library())
+
+    return 0
+
+
+def work_out_day_for_logging(date_text: str | None) -> datetime.date | None:
+    """Which day a logging command writes to. Defaults to today; None means bad input."""
+    if date_text is None:
+        return datetime.date.today()
+
+    try:
+        return datetime.date.fromisoformat(date_text)
+    except ValueError:
+        print(f"'{date_text}' is not a date. Use the form 2026-09-12.")
+        return None
+
+
+def print_day_running_total(day: datetime.date, whole_library: library.Library) -> None:
+    """Print where a day stands after something was logged to it."""
+    open_database = database.Database()
+    entries = food_store.load_entries_for_day(open_database, day)
+    open_database.close()
+
+    totals = log.total_up(entries)
+    target = whole_library.target_in_force_on(day)
+
+    if target is None:
+        print(f"  day total: {totals.kilocalories:.0f} kcal")
+        print()
+        return
+
+    left = log.remaining_against(totals, target)
+
+    print()
+    print(f"  day so far: {totals.kilocalories:.0f} / {target.kilocalories:.0f} kcal"
+          f"   left: {left.kilocalories:+.0f} kcal,"
+          f" {left.protein_grams:+.0f} P,"
+          f" {left.carbohydrate_grams:+.0f} C,"
+          f" {left.fat_grams:+.0f} F")
+    print()
+
+
 def build_food_row(*cells: str) -> str:
     """Lay out one row of the `foods` table."""
     widths = [18, 25, 18, 9, 6, 6, 6, 6]
@@ -926,6 +1194,58 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="the day to log it against, as YYYY-MM-DD (default: today)",
     )
 
+    meal_command = subcommands.add_parser(
+        "meal",
+        help="log one saved meal, e.g. morning",
+    )
+    meal_command.add_argument("meal_id", help="which meal, e.g. yogurt-bowl")
+    meal_command.add_argument("--date", help="the day to log against (default: today)")
+    meal_command.add_argument(
+        "--set",
+        action="append",
+        dest="set_servings",
+        help="answer a varying amount, e.g. --set rice-jasmine=1.25 (repeatable)",
+    )
+
+    template_command = subcommands.add_parser(
+        "template",
+        help="log a whole day from a template, e.g. normal-day",
+    )
+    template_command.add_argument("template_id", help="which template, e.g. normal-day")
+    template_command.add_argument("--date", help="the day to log against (default: today)")
+    template_command.add_argument(
+        "--set",
+        action="append",
+        dest="set_servings",
+        help="answer a varying amount, e.g. --set rice-jasmine=1.25 (repeatable)",
+    )
+    template_command.add_argument(
+        "--replace",
+        action="store_true",
+        help="clear the day's food first, then log the template",
+    )
+    template_command.add_argument(
+        "--add",
+        action="store_true",
+        help="log the template on top of what is already there",
+    )
+
+    copy_command = subcommands.add_parser(
+        "copy-yesterday",
+        help="copy yesterday's entries onto today",
+    )
+    copy_command.add_argument("--date", help="the day to copy INTO (default: today)")
+    copy_command.add_argument(
+        "--replace",
+        action="store_true",
+        help="clear the day's food first",
+    )
+    copy_command.add_argument(
+        "--add",
+        action="store_true",
+        help="copy on top of what is already there",
+    )
+
     days_command = subcommands.add_parser(
         "days",
         help="one line per stored day, to see a span at a glance",
@@ -960,6 +1280,25 @@ def main() -> int:
 
     if arguments.command == "log":
         return run_log(arguments.food_id, arguments.servings, arguments.date)
+
+    if arguments.command == "meal":
+        return run_meal(arguments.meal_id, arguments.date, arguments.set_servings)
+
+    if arguments.command == "template":
+        return run_template(
+            arguments.template_id,
+            arguments.date,
+            arguments.set_servings,
+            replace_existing=arguments.replace,
+            add_to_existing=arguments.add,
+        )
+
+    if arguments.command == "copy-yesterday":
+        return run_copy_yesterday(
+            arguments.date,
+            replace_existing=arguments.replace,
+            add_to_existing=arguments.add,
+        )
 
     if arguments.command == "days":
         return run_days(arguments.days)

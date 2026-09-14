@@ -7,8 +7,12 @@ __pycache__/
 htmlcov/
 *.egg-info/
 # Never commit real health data or Garmin tokens
-# (seed/food-library.yaml holds PROVISIONAL values and is tracked; if you replace them
-#  with real label data you may prefer an untracked seed/food-library.local.yaml override)
+#
+# seed/food-library.yaml WAS tracked while it held generic provisional values. It now
+# holds the real daily routine and the profile block (birth date, height, weight), so it
+# stays local. seed/food-library.template.yaml is the pristine, all-null version, and is
+# the one the repository publishes.
+seed/food-library.yaml
 fixtures/raw/
 .garmin_tokens/
 .env
@@ -22,6 +26,7 @@ WALKTHROUGH.md
 RESUME.md
 RESUME-COMPLETE.md
 HANDOFF.md
+NOTEBOOK.md
 docs/
 docs/fr165-fields.local.md
 seed/food-library.local.yaml
@@ -32,3 +37,9 @@ garmin-dashboard.db
 
 # The previous build, kept locally for reference only -- not pushed.
 reference/
+
+# Personal documents -- DEXA scans, diet reports, anything with your name or body on it.
+# Broad on purpose: it is far better to have to force-add a harmless PDF than to push a
+# body-composition report to a public repository once.
+*.pdf
+private/
