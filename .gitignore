@@ -1,0 +1,34 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.egg-info/
+# Never commit real health data or Garmin tokens
+# (seed/food-library.yaml holds PROVISIONAL values and is tracked; if you replace them
+#  with real label data you may prefer an untracked seed/food-library.local.yaml override)
+fixtures/raw/
+.garmin_tokens/
+.env
+# Internal design docs -- kept local, not pushed
+ENGINE.md
+IDEAS.md
+LEARNING.md
+PLAN.md
+PRODUCT.md
+WALKTHROUGH.md
+RESUME.md
+RESUME-COMPLETE.md
+HANDOFF.md
+docs/
+docs/fr165-fields.local.md
+seed/food-library.local.yaml
+
+# Local database -- contains real health data
+garmin-dashboard.db
+*.db
+
+# The previous build, kept locally for reference only -- not pushed.
+reference/
