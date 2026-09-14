@@ -29,22 +29,15 @@ import json
 from pathlib import Path
 from typing import Any
 
+from backend import paths
 from backend.garmin import fetch
 
 # ---------------------------------------------------------------------------
 # Where the files go
 # ---------------------------------------------------------------------------
-#
-# Same walk up from this file to the project root as in login.py:
-#   backend/garmin/raw_files.py -> backend/garmin -> backend -> the project root
-
-THIS_FILE = Path(__file__).resolve()
-GARMIN_PACKAGE_DIRECTORY = THIS_FILE.parent
-BACKEND_DIRECTORY = GARMIN_PACKAGE_DIRECTORY.parent
-PROJECT_ROOT = BACKEND_DIRECTORY.parent
 
 #: The root of the saved responses. One folder per day lives underneath it.
-DEFAULT_RAW_DIRECTORY = PROJECT_ROOT / "fixtures" / "raw" / "garmin"
+DEFAULT_RAW_DIRECTORY = paths.PROJECT_ROOT / "fixtures" / "raw" / "garmin"
 
 #: The summary file written alongside each day's responses. The leading underscore
 #: marks it as ours rather than something Garmin sent, and sorts it to the top of a

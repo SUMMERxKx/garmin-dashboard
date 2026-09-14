@@ -42,6 +42,9 @@ LOCAL_TIME_FORMAT = "%Y-%m-%d %H:%M:%S"
 #: a calculation, so the conversion says out loud what it is doing.
 SECONDS_PER_MINUTE = 60.0
 
+#: How many grams in a kilogram, for the same reason.
+GRAMS_PER_KILOGRAM = 1000.0
+
 
 def seconds_to_minutes(seconds: float | None) -> float | None:
     """Convert seconds to minutes, passing None straight through.
@@ -62,7 +65,7 @@ def to_kilograms(weight_from_garmin: float | None) -> float | None:
         return None
 
     if weight_from_garmin > GRAMS_THRESHOLD:
-        return weight_from_garmin / 1000.0
+        return weight_from_garmin / GRAMS_PER_KILOGRAM
 
     return weight_from_garmin
 
@@ -103,7 +106,6 @@ class ValueReader:
             self.provenance[field_name] = f"{endpoint_name} -> {path}"
 
         return value
-
 
     def read_text(self, field_name: str, endpoint_name: str, path: str) -> str | None:
         """Read one piece of text, recording its source if it was there."""
@@ -384,10 +386,14 @@ def read_one_activity(one_activity: dict[str, Any], position_in_list: int) -> Ac
     entry, so a surprising number can be traced back to the exact activity it came from
     rather than to "somewhere in the list".
     """
+    # The name this activity is filed under, used both as the key the reader looks it
+    # up by and as the source written into the provenance. Built once, so the two can
+    # never disagree about which entry in the list a number came from.
+    source = f"activities[{position_in_list}]"
+
     # The same ValueReader as the daily fields, pointed at one activity. Reusing it
     # keeps the rule that reading a value and recording its source are one step.
-    reader = ValueReader({f"activities[{position_in_list}]": one_activity})
-    source = f"activities[{position_in_list}]"
+    reader = ValueReader({source: one_activity})
 
     return Activity(
         name=reader.read_text("name", source, "activityName"),

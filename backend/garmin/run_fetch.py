@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import datetime
+from pathlib import Path
 
 from backend.garmin import fetch
 from backend.garmin import login
@@ -60,7 +61,7 @@ def work_out_which_days_to_fetch(
     return sorted(days)
 
 
-def describe_one_day(result: fetch.DayFetchResult, folder_saved_to) -> None:
+def describe_one_day(result: fetch.DayFetchResult, folder_saved_to: Path) -> None:
     """Print a short readable report of how one day went."""
     print()
     print(f"== {result.day.isoformat()} ==")

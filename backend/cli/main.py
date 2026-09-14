@@ -125,6 +125,47 @@ def show_signed_number(value: int | None, sign: str) -> str:
     return f"{sign}{show_number(value)}"
 
 
+def to_kilometres(metres: float | None) -> float | None:
+    """Convert metres to kilometres, passing None straight through.
+
+    Garmin reports every distance in metres. Nobody reads a run in metres, so the
+    division happens here, once, rather than at each of the three places below that
+    print a distance.
+    """
+    if metres is None:
+        return None
+
+    return metres / METRES_PER_KILOMETRE
+
+
+def show_pace(duration_minutes: float | None, distance_metres: float | None) -> str:
+    """Minutes per kilometre, the unit a run is actually read in.
+
+    Garmin reports speed in metres per second, which nobody thinks in. This is derived
+    from duration and distance rather than read from `averageSpeed`, so that the pace on
+    screen always agrees with the two numbers printed directly above it.
+    """
+    if duration_minutes is None:
+        return NOTHING_TO_SHOW
+
+    if distance_metres is None:
+        return NOTHING_TO_SHOW
+
+    # A lifting session records no distance. Dividing by it would crash, and a pace for
+    # a session that did not move anywhere would be meaningless even if it did not.
+    if distance_metres <= 0:
+        return NOTHING_TO_SHOW
+
+    # Safe to divide by: the check above has already ruled out None and zero.
+    kilometres = to_kilometres(distance_metres)
+    minutes_per_kilometre = duration_minutes / kilometres
+
+    whole_minutes = int(minutes_per_kilometre)
+    seconds = round((minutes_per_kilometre - whole_minutes) * SECONDS_PER_MINUTE)
+
+    return f"{whole_minutes}:{seconds:02d} /km"
+
+
 def print_line(label: str, value: str, label_width: int = LABEL_WIDTH) -> None:
     """Print one indented `label    value` row, with the labels all the same width.
 
@@ -150,45 +191,15 @@ def print_energy(energy: normalize.Energy) -> None:
     print_line("resting", show_number(energy.resting_kilocalories, "kcal"))
     print_line("steps", show_number(energy.steps))
 
-    if energy.distance_metres is None:
-        distance = NOTHING_TO_SHOW
-    else:
-        kilometres = energy.distance_metres / METRES_PER_KILOMETRE
-        distance = show_number(kilometres, "km", decimal_places=1)
-
-    print_line("distance", distance)
+    # `to_kilometres` passes a missing distance through as None, and `show_number`
+    # turns that into `--`, so there is no missing-value case to handle here.
+    kilometres = to_kilometres(energy.distance_metres)
+    print_line("distance", show_number(kilometres, "km", decimal_places=1))
 
     # The two intensity figures mean nothing apart, so they are printed as one row.
     moderate = show_number(energy.moderate_intensity_minutes)
     vigorous = show_number(energy.vigorous_intensity_minutes)
     print_line("intensity minutes", f"{moderate} moderate / {vigorous} vigorous")
-
-
-def show_pace(duration_minutes: float | None, distance_metres: float | None) -> str:
-    """Minutes per kilometre, the unit a run is actually read in.
-
-    Garmin reports speed in metres per second, which nobody thinks in. This is derived
-    from duration and distance rather than read from `averageSpeed`, so that the pace on
-    screen always agrees with the two numbers printed directly above it.
-    """
-    if duration_minutes is None:
-        return NOTHING_TO_SHOW
-
-    if distance_metres is None:
-        return NOTHING_TO_SHOW
-
-    # A lifting session records no distance. Dividing by it would crash, and a pace for
-    # a session that did not move anywhere would be meaningless even if it did not.
-    if distance_metres <= 0:
-        return NOTHING_TO_SHOW
-
-    kilometres = distance_metres / METRES_PER_KILOMETRE
-    minutes_per_kilometre = duration_minutes / kilometres
-
-    whole_minutes = int(minutes_per_kilometre)
-    seconds = round((minutes_per_kilometre - whole_minutes) * SECONDS_PER_MINUTE)
-
-    return f"{whole_minutes}:{seconds:02d} /km"
 
 
 def print_one_activity(activity: normalize.Activity) -> None:
@@ -206,13 +217,16 @@ def print_one_activity(activity: normalize.Activity) -> None:
     print()
     print(f"  {started}  {name}  ({type_key})")
 
+    # Every label in this function starts with two extra spaces, which indents these
+    # rows under the workout's own title line printed just above. On a day with two
+    # workouts that indent is what keeps them from reading as one long block.
     print_line("  duration", show_duration(activity.duration_minutes))
 
     if activity.distance_metres is None or activity.distance_metres <= 0:
         # A lifting session covers no ground. Saying so beats printing "0.0 km".
         print_line("  distance", NOTHING_TO_SHOW)
     else:
-        kilometres = activity.distance_metres / METRES_PER_KILOMETRE
+        kilometres = to_kilometres(activity.distance_metres)
         print_line("  distance", show_number(kilometres, "km", decimal_places=2))
         print_line("  pace", show_pace(activity.duration_minutes, activity.distance_metres))
 
@@ -330,8 +344,15 @@ def print_provenance(snapshot: normalize.DailySnapshot) -> None:
         return
 
     # Two spaces past the longest name, so there is always a visible gap between the
-    # name and its source however long the names happen to be.
-    widest_name = max(len(one_name) for one_name in field_names)
+    # name and its source however long the names happen to be. The activity names are
+    # measured too, because they are printed in the same column further down and one
+    # long one would otherwise run straight into its source.
+    every_name = list(field_names)
+
+    for one_activity in snapshot.activities:
+        every_name.extend(one_activity.provenance.keys())
+
+    widest_name = max(len(one_name) for one_name in every_name)
     column_width = widest_name + 2
 
     for field_name in field_names:

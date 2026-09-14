@@ -54,25 +54,29 @@ def split_path_into_steps(path: str) -> list[str | int]:
     # Parts of a path are separated by dots, so start there.
     for piece in path.split("."):
         # A piece may carry one or more list positions on the end, like
-        # "dateWeightList[0]" or even "matrix[0][1]". Peel them off one at a time.
-        while "[" in piece:
+        # "dateWeightList[0]" or even "matrix[0][1]". Peel them off one at a time,
+        # shortening `text_left_to_read` as we go. It starts as the whole piece, and
+        # what survives the loop is whatever was not a bracket.
+        text_left_to_read = piece
+
+        while "[" in text_left_to_read:
             # `partition` splits on the first bracket and gives back three parts:
             # what came before it, the bracket itself, and what came after.
-            name_before_bracket, _, remainder = piece.partition("[")
+            name_before_bracket, _, after_the_bracket = text_left_to_read.partition("[")
 
             # There may be no name at all, if this piece was nothing but an index.
             if name_before_bracket:
                 steps.append(name_before_bracket)
 
-            index_as_text, _, rest_of_piece = remainder.partition("]")
+            index_as_text, _, text_after_the_index = after_the_bracket.partition("]")
             steps.append(int(index_as_text))
 
             # Loop again in case another index follows.
-            piece = rest_of_piece
+            text_left_to_read = text_after_the_index
 
         # Whatever is left over is an ordinary key name.
-        if piece:
-            steps.append(piece)
+        if text_left_to_read:
+            steps.append(text_left_to_read)
 
     return steps
 

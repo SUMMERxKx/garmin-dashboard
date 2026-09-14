@@ -21,34 +21,19 @@ from __future__ import annotations
 
 import getpass
 import os
-from pathlib import Path
 from typing import Any
+
+from backend import paths
 
 # ---------------------------------------------------------------------------
 # Where the token bundle is kept
 # ---------------------------------------------------------------------------
-#
-# Working out the project root from this file's own location, one step at a time:
-#
-#   Path(__file__)          ".../Garmin Dashboard/backend/garmin/login.py"
-#   .resolve()              the same thing as a full absolute path, symlinks followed
-#   .parent                 ".../Garmin Dashboard/backend/garmin"
-#   .parent.parent          ".../Garmin Dashboard/backend"
-#   .parent.parent.parent   ".../Garmin Dashboard"          <- the project root
-#
-# Doing it this way, rather than writing the path out as text, means the code still
-# works if the project folder is renamed or moved to another machine.
-
-THIS_FILE = Path(__file__).resolve()
-GARMIN_PACKAGE_DIRECTORY = THIS_FILE.parent
-BACKEND_DIRECTORY = GARMIN_PACKAGE_DIRECTORY.parent
-PROJECT_ROOT = BACKEND_DIRECTORY.parent
 
 #: The folder the `garminconnect` library saves its login tokens into. A token is like
 #: the cookie a website gives your browser after you sign in: proof that you already
 #: logged in, so you do not have to type a password again. This folder is gitignored,
 #: because anyone holding these tokens can read your Garmin data.
-TOKEN_DIRECTORY = PROJECT_ROOT / ".garmin_tokens"
+TOKEN_DIRECTORY = paths.PROJECT_ROOT / ".garmin_tokens"
 
 
 def ask_for_mfa_code() -> str:
