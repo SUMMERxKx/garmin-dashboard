@@ -52,12 +52,12 @@ export function ProfileCard({ payload }: { payload: DaysPayload }) {
       : null;
 
   return (
-    <section className="rounded-3xl border border-white/6 bg-night-850/70 p-5 backdrop-blur-md shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset,0_18px_40px_-28px_rgba(0,0,0,0.9)] sm:p-6">
+    <section className="border border-white/10 bg-night-850 p-5 sm:p-6">
       <div className="flex items-center gap-4 sm:gap-5">
         <div className="relative shrink-0">
           {/* Pixel frame: a hard ring and square corners, so the avatar reads as an
               8-bit portrait rather than a social-media bubble. */}
-          <div className="grid size-20 place-items-center overflow-hidden rounded-2xl bg-night-800 ring-2 ring-blossom-400/40 sm:size-24">
+          <div className="grid size-20 place-items-center overflow-hidden border border-blossom-400/35 bg-night-800 sm:size-24">
             {avatarFailed ? (
               <PixelGoat />
             ) : (
@@ -72,8 +72,7 @@ export function ProfileCard({ payload }: { payload: DaysPayload }) {
         </div>
 
         <div className="min-w-0">
-          <p className="text-xs font-medium tracking-wide text-blossom-100/45">Athlete</p>
-          <h1 className="truncate text-[clamp(1.5rem,1.2rem+1.4vw,2.25rem)] font-bold leading-tight text-white">
+          <h1 className="truncate text-[clamp(1.5rem,1.2rem+1.4vw,2.25rem)] font-semibold leading-tight tracking-tight text-white">
             {DISPLAY_NAME}
           </h1>
           <p className="tabular mt-0.5 text-xs text-blossom-100/45">

@@ -5,7 +5,6 @@ import {
   Footprints,
   HeartPulse,
   Moon,
-  Scale,
   Utensils,
   Zap,
 } from "lucide-react";
@@ -188,38 +187,7 @@ export function StatsGrid({ payload }: { payload: DaysPayload }) {
         chart={<MiniChart points={stress} colour="var(--color-sky-400)" lowerIsBetter />}
       />
 
-      <Vo2Card />
     </div>
-  );
-}
-
-/**
- * VO2 max, which this watch does not report.
- *
- * Shown as an empty card rather than left out. You asked for it, and "the card is here
- * and the watch cannot fill it" is a more useful answer than the metric silently not
- * existing -- otherwise the question comes back every few weeks.
- *
- * Confirmed against your own data: `max_metrics` returns an empty list on all 31 days,
- * and `training_status.mostRecentVO2Max` is null on every one of them.
- */
-function Vo2Card() {
-  return (
-    <StatCard
-      icon={Scale}
-      tone="plum"
-      label="VO₂ max"
-      value={NOTHING}
-      footnote="the FR165 does not report this"
-    >
-      <div className="mt-4 rounded-xl border border-dashed border-white/10 bg-white/[0.02] p-3">
-        <p className="text-xs leading-relaxed text-blossom-100/45">
-          Garmin reserves VO₂ max, Training Status and Training Readiness for its higher
-          watches. Checked across all 31 days: every reading is null. A lab test or a
-          different watch is the only way to fill this.
-        </p>
-      </div>
-    </StatCard>
   );
 }
 

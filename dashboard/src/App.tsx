@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import Petals from "@/components/ui/petals";
 import { ProfileCard } from "@/components/panels/profile";
 import { StatsGrid } from "@/components/panels/stats";
-import { BodyCard, NutritionCard } from "@/components/panels/side";
+import { BodyCard, EnergyCard } from "@/components/panels/side";
 import { loadDays } from "@/data/loadDays";
 import type { DaysPayload } from "@/data/types";
 import { formatDay } from "@/lib/format";
@@ -37,7 +37,7 @@ export default function App() {
     <div className="relative min-h-screen w-full bg-night-900 text-blossom-100">
       {/* Petals drift behind everything. Held back with a scrim so the numbers in front
           stay the thing you look at -- atmosphere, not subject. */}
-      <div className="pointer-events-none fixed inset-0 z-0">
+      <div className="pointer-events-none fixed inset-0 z-0 [transform:translateZ(0)] [will-change:transform]">
         <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_15%_0%,var(--color-night-800),var(--color-night-900)_58%)]" />
         <Petals className="size-full" />
         <div className="absolute inset-0 bg-night-900/25" />
@@ -54,7 +54,7 @@ export default function App() {
             </div>
 
             <aside className="flex flex-col gap-4 xl:gap-5">
-              <NutritionCard payload={payload} />
+              <EnergyCard payload={payload} />
               <BodyCard payload={payload} />
             </aside>
           </div>

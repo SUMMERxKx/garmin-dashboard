@@ -6,7 +6,7 @@
  */
 
 /** Shown on the profile card. */
-export const DISPLAY_NAME = "Samar";
+export const DISPLAY_NAME = "Summer";
 
 /**
  * Your photo. Drop a file at `dashboard/public/avatar.png` and it appears; until then

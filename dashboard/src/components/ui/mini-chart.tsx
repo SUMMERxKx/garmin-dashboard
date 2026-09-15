@@ -35,7 +35,7 @@ export function MiniChart({
 }) {
   if (points.length === 0) {
     return (
-      <div className="flex h-16 items-center rounded-xl bg-white/[0.03] px-3 text-xs text-blossom-100/35">
+      <div className="flex h-16 items-center border border-white/8 bg-white/[0.02] px-3 text-xs text-blossom-100/35">
         no readings yet
       </div>
     );
@@ -142,7 +142,7 @@ export function MiniBars({
 }) {
   if (points.length === 0) {
     return (
-      <div className="flex h-16 items-center rounded-xl bg-white/[0.03] px-3 text-xs text-blossom-100/35">
+      <div className="flex h-16 items-center border border-white/8 bg-white/[0.02] px-3 text-xs text-blossom-100/35">
         no readings yet
       </div>
     );
@@ -164,7 +164,7 @@ export function MiniBars({
         {points.map((one) => (
           <div
             key={one.day}
-            className="min-w-0 flex-1 rounded-sm transition-opacity hover:opacity-100"
+            className="min-w-0 flex-1 transition-opacity hover:opacity-100"
             style={{
               height: `${Math.max((one.value / highest) * 100, 2)}%`,
               // Capped, or a series with one or two readings stretches into a solid

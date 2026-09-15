@@ -53,13 +53,13 @@ type Petal = {
  *  to ignore. Higher than first guessed, because the cards cover most of the viewport --
  *  only the margins and the gaps between panels ever show this, so the effective density
  *  a reader sees is a fraction of the number here. */
-const PETAL_DENSITY = 155;
+const PETAL_DENSITY = 120;
 
 /** Never fewer than this, or a small window looks broken rather than calm. */
 const MINIMUM_PETALS = 30;
 
 /** Never more than this, whatever the screen size. */
-const MAXIMUM_PETALS = 260;
+const MAXIMUM_PETALS = 180;
 
 function makeRandom(seed: number) {
   let state = seed;
