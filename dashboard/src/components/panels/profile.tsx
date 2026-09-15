@@ -3,6 +3,9 @@ import { AVATAR_URL, DISPLAY_NAME } from "@/config";
 import type { DaysPayload } from "@/data/types";
 import { formatNumber, NOTHING, parseIsoDay } from "@/lib/format";
 
+/** 365.2425 days, the Gregorian average once leap years are accounted for. */
+const MILLISECONDS_IN_AN_AVERAGE_YEAR = 365.2425 * 24 * 60 * 60 * 1000;
+
 /**
  * Who this is, and the four numbers that describe the body rather than the day.
  *
@@ -43,11 +46,18 @@ export function ProfileCard({ payload }: { payload: DaysPayload }) {
         ? `DEXA ${payload.latest_scan?.scan_date ?? ""}`
         : null;
 
+  // Age is worked out against the payload's own `generated_at`, not the wall clock.
+  // Two reasons, and both matter. Calling Date.now() during render makes the component
+  // impure -- the same props could produce a different number on a later re-render for
+  // no reason the code can see. And it keeps the page consistent with the Python side,
+  // where nothing reads the clock either: every figure on screen is then "as of" one
+  // moment, the moment the export was written, rather than a mix of the two.
   const age =
     payload.profile?.birth_date != null
       ? Math.floor(
-          (Date.now() - parseIsoDay(payload.profile.birth_date).getTime()) /
-            (365.2425 * 24 * 60 * 60 * 1000),
+          (new Date(payload.generated_at).getTime() -
+            parseIsoDay(payload.profile.birth_date).getTime()) /
+            MILLISECONDS_IN_AN_AVERAGE_YEAR,
         )
       : null;
 

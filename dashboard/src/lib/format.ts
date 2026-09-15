@@ -8,50 +8,6 @@
 
 /** Missing shows as an em dash. Never as 0, which would be a measurement. */
 export const NOTHING = "—";
-
-export function kilometres(metres: number | null | undefined, places = 2): string {
-  if (metres === null || metres === undefined) {
-    return NOTHING;
-  }
-
-  return (metres / 1000).toFixed(places);
-}
-
-/**
- * Minutes per kilometre, written the way a runner says it: 4:28, not 4.47.
- *
- * Returns null rather than a string for very short distances. A 200 m warm-up logged as
- * its own activity produces an arithmetically valid pace that means nothing, and a
- * nonsense number printed confidently is worse than a blank.
- */
-export function paceMinutesPerKm(
-  metres: number | null,
-  minutes: number | null,
-): number | null {
-  if (metres === null || minutes === null || metres < 400 || minutes <= 0) {
-    return null;
-  }
-
-  return minutes / (metres / 1000);
-}
-
-export function formatPace(paceInMinutes: number | null): string {
-  if (paceInMinutes === null) {
-    return NOTHING;
-  }
-
-  const wholeMinutes = Math.floor(paceInMinutes);
-  const seconds = Math.round((paceInMinutes - wholeMinutes) * 60);
-
-  // 4.999 minutes rounds to 60 seconds, which must read as 5:00 rather than 4:60.
-  if (seconds === 60) {
-    return `${wholeMinutes + 1}:00`;
-  }
-
-  return `${wholeMinutes}:${String(seconds).padStart(2, "0")}`;
-}
-
-/** 87.5 minutes -> "1h 28m". Durations over an hour are unreadable in minutes alone. */
 export function formatDuration(minutes: number | null | undefined): string {
   if (minutes === null || minutes === undefined) {
     return NOTHING;

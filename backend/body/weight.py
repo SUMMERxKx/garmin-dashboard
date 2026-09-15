@@ -119,13 +119,6 @@ def describe_jump(previous: Weighing | None, kilograms: float) -> str | None:
         f"{kilograms:g} kg is {jump:.1f} kg away from your last weigh-in"
         f" ({previous.kilograms:g} kg on {previous.day.isoformat()})."
     )
-
-
-def newest_first(weighings: list[Weighing]) -> list[Weighing]:
-    """Most recent weigh-in first. Useful for "what do I weigh now?"."""
-    return sorted(weighings, key=lambda one: one.day, reverse=True)
-
-
 def change_between(earlier: Weighing, later: Weighing) -> tuple[float, int]:
     """How much weight changed between two weigh-ins, and over how many days.
 

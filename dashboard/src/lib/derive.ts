@@ -1,6 +1,3 @@
-import type { Activity, Day } from "@/data/types";
-import { daysBetween, paceMinutesPerKm, parseIsoDay } from "@/lib/format";
-
 /**
  * Pulling the shapes the panels need out of the flat list of days.
  *
@@ -11,111 +8,8 @@ import { daysBetween, paceMinutesPerKm, parseIsoDay } from "@/lib/format";
  * not hidden in a React helper.
  */
 
-/** Garmin's type keys for anything that counts as a run. */
-const RUNNING_TYPES = ["running", "treadmill_running", "trail_running", "track_running"];
-
-export function isRun(activity: Activity): boolean {
-  if (activity.type_key === null) {
-    return false;
-  }
-
-  return RUNNING_TYPES.includes(activity.type_key);
-}
-
-export type DatedActivity = Activity & { day: string };
-
-/** Every activity across the span, newest first, each carrying the day it happened. */
-export function allActivities(days: Day[]): DatedActivity[] {
-  const activities: DatedActivity[] = [];
-
-  for (const day of days) {
-    for (const activity of day.activities) {
-      activities.push({ ...activity, day: day.day });
-    }
-  }
-
-  return activities.reverse();
-}
-
-export type Run = DatedActivity & {
-  /** Minutes per kilometre, or null when the distance is too short to mean anything. */
-  pace: number | null;
-};
-
-export function allRuns(days: Day[]): Run[] {
-  return allActivities(days)
-    .filter(isRun)
-    .map((activity) => ({
-      ...activity,
-      pace: paceMinutesPerKm(activity.distance_metres, activity.duration_minutes),
-    }));
-}
-
-export type Week = {
-  /** ISO date of the Monday this week starts on. */
-  startDay: string;
-  runDistanceMetres: number;
-  runMinutes: number;
-  runCount: number;
-  strengthMinutes: number;
-  otherCardioMinutes: number;
-};
-
-/**
- * Group the span into calendar weeks starting on Monday.
- *
- * Weekly distance is the number runners actually plan against -- nobody sets a daily
- * mileage target -- so the week, not the day, is the unit here.
- */
-export function weeklyTotals(days: Day[]): Week[] {
-  const weeks = new Map<string, Week>();
-
-  for (const day of days) {
-    const date = parseIsoDay(day.day);
-    // getDay() is 0 for Sunday, so Sunday has to step back six days rather than one.
-    const dayOfWeek = date.getDay();
-    const stepBack = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-
-    const monday = new Date(date);
-    monday.setDate(date.getDate() - stepBack);
-
-    const startDay = [
-      monday.getFullYear(),
-      String(monday.getMonth() + 1).padStart(2, "0"),
-      String(monday.getDate()).padStart(2, "0"),
-    ].join("-");
-
-    let week = weeks.get(startDay);
-
-    if (week === undefined) {
-      week = {
-        startDay,
-        runDistanceMetres: 0,
-        runMinutes: 0,
-        runCount: 0,
-        strengthMinutes: 0,
-        otherCardioMinutes: 0,
-      };
-      weeks.set(startDay, week);
-    }
-
-    for (const activity of day.activities) {
-      const minutes = activity.duration_minutes ?? 0;
-
-      if (isRun(activity)) {
-        week.runDistanceMetres = week.runDistanceMetres + (activity.distance_metres ?? 0);
-        week.runMinutes = week.runMinutes + minutes;
-        week.runCount = week.runCount + 1;
-      } else if (activity.type_key === "strength_training") {
-        week.strengthMinutes = week.strengthMinutes + minutes;
-      } else {
-        week.otherCardioMinutes = week.otherCardioMinutes + minutes;
-      }
-    }
-  }
-
-  return [...weeks.values()].sort((a, b) => a.startDay.localeCompare(b.startDay));
-}
+import type { Day } from "@/data/types";
+import { daysBetween } from "@/lib/format";
 
 export type Point = {
   day: string;

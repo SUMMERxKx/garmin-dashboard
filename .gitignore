@@ -21,7 +21,9 @@ fixtures/
 dashboard/public/data/
 .garmin_tokens/
 .env
-# Internal design docs -- kept local, not pushed
+# Internal design docs -- kept local, not pushed. README.md is deliberately NOT in
+# this list: it is the front page of a public repository and contains no readings,
+# only what the project is and how to run it.
 ENGINE.md
 IDEAS.md
 LEARNING.md
@@ -33,7 +35,6 @@ RESUME-COMPLETE.md
 HANDOFF.md
 NOTEBOOK.md
 REBUILD.md
-README.md
 docs/
 docs/fr165-fields.local.md
 seed/food-library.local.yaml

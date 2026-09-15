@@ -253,17 +253,3 @@ def tier_one_endpoints() -> list[Endpoint]:
             important_endpoints.append(endpoint)
 
     return important_endpoints
-
-
-def find_endpoint_by_name(wanted_name: str) -> Endpoint | None:
-    """Look up one endpoint by our short name, or None if there is no such endpoint.
-
-    Returning None rather than raising is deliberate: callers looking a name up are
-    usually reading a saved file whose name may predate a change to this list, and
-    "I do not recognise this one" is a normal answer there, not an error.
-    """
-    for endpoint in ENDPOINTS:
-        if endpoint.name == wanted_name:
-            return endpoint
-
-    return None

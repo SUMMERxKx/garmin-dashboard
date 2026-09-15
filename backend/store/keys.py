@@ -59,29 +59,6 @@ HIGHEST_CHARACTER = "~"
 def user_partition(user_id: str = DEFAULT_USER_ID) -> str:
     """The partition key: everything belonging to one person."""
     return f"USER{SEPARATOR}{user_id}"
-
-
-def dexa_key(scan_date: datetime.date) -> str:
-    """One DEXA scan, addressed by the date it was taken.
-
-    Scans are their own kind of record rather than part of a day, because they are rare
-    -- a few a year -- and because they anchor everything around them. A scan on
-    2026-09-06 is the truth about that date, and the weeks either side are modelled
-    against it.
-
-    Scans currently load straight from `private/dexa-scans.yaml`, which is quick enough
-    for the handful of them that will ever exist. This is the address they take when
-    they move into the store alongside everything else, and it is defined here so the
-    scheme is complete in one file rather than half here and half discovered later.
-    """
-    return f"DEXA{SEPARATOR}{scan_date.isoformat()}"
-
-
-def dexa_prefix() -> str:
-    """Matches every DEXA scan, for "show me all of them, in order"."""
-    return f"DEXA{SEPARATOR}"
-
-
 def day_prefix(day: datetime.date) -> str:
     """Matches every record belonging to one day.
 
