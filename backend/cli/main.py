@@ -28,6 +28,7 @@ import dataclasses
 import datetime
 
 from backend.body import dexa
+from backend.body import weight
 from backend.food import library
 from backend.food import log
 from backend.garmin import normalize
@@ -35,6 +36,7 @@ from backend.garmin import raw_files
 from backend.store import database
 from backend.store import day_store
 from backend.store import food_store
+from backend.store import weight_store
 
 #: What to print where a value is missing. Every field in a snapshot can genuinely be
 #: absent -- a watch left on the charger is a normal Tuesday -- so this is a normal
@@ -272,6 +274,11 @@ def print_activities(activities: list[normalize.Activity]) -> None:
     print("  (already counted inside the day's active calories, not on top of them)")
 
 
+#: How far back to look for a previous weigh-in when sanity-checking a new one. Six
+#: weeks is long enough to find one after a holiday, and short enough that the
+#: comparison is still meaningful.
+WEIGH_IN_LOOKBACK_DAYS = 42
+
 #: The narrowest the INTAKE label column is allowed to get, so a day with two short
 #: entries still lines up with the sections above and below it.
 INTAKE_LABEL_WIDTH = 34
@@ -446,15 +453,39 @@ def print_recovery(recovery: normalize.Recovery) -> None:
     print_line("average stress", show_number(recovery.average_stress))
 
 
-def print_body(body: normalize.Body) -> None:
+def print_body(body: normalize.Body, recorded: weight.Weighing | None) -> None:
     """Print the body measurements.
 
-    Usually one empty row, and that is expected rather than a fault: there is no smart
-    scale, so weight is normally typed in by hand rather than arriving from Garmin.
+    Two possible sources for one number, so both are shown when they disagree. Our own
+    record wins the "weight" line because it is the one you chose to record; Garmin's is
+    printed beneath it rather than discarded, since a difference means one of them is
+    about a different moment -- and quietly picking a winner would hide that.
     """
     print_heading("BODY")
 
+    if recorded is not None:
+        print_line("weight", show_number(recorded.kilograms, "kg", decimal_places=1))
+
+        if recorded.source != "manual":
+            print_line("  source", recorded.source)
+
+        if body.weight_kilograms is not None:
+            difference = body.weight_kilograms - recorded.kilograms
+
+            if abs(difference) >= 0.05:
+                print_line(
+                    "  Garmin says",
+                    f"{body.weight_kilograms:.1f} kg   ({difference:+.1f} kg)",
+                )
+
+        return
+
+    # Nothing recorded for this day. Garmin occasionally has one anyway, from a weight
+    # typed into Connect.
     print_line("weight", show_number(body.weight_kilograms, "kg", decimal_places=1))
+
+    if body.weight_kilograms is not None:
+        print_line("  source", "garmin -- not recorded here")
 
 
 def print_provenance(snapshot: normalize.DailySnapshot) -> None:
@@ -509,6 +540,7 @@ def print_snapshot(
     show_provenance: bool,
     entries: list[log.LoggedFood],
     target: library.MacroTarget | None,
+    recorded_weight: weight.Weighing | None,
 ) -> None:
     """Print one whole day."""
     # "Friday 12 September 2026" rather than "2026-09-12", because a weekday is what
@@ -537,7 +569,7 @@ def print_snapshot(
     print_activities(snapshot.activities)
     print_sleep(snapshot.sleep)
     print_recovery(snapshot.recovery)
-    print_body(snapshot.body)
+    print_body(snapshot.body, recorded_weight)
 
     if show_provenance:
         print_provenance(snapshot)
@@ -1121,6 +1153,146 @@ def print_day_running_total(day: datetime.date, whole_library: library.Library) 
     print()
 
 
+def run_weigh(kilograms: float, date_text: str | None, force: bool) -> int:
+    """Record a weigh-in.
+
+    Defaults to today, like the other logging commands: you weigh yourself and then
+    type it in.
+    """
+    day = work_out_day_for_logging(date_text)
+
+    if day is None:
+        return 1
+
+    problem = weight.describe_problem(kilograms)
+
+    if problem:
+        print(problem)
+        return 1
+
+    open_database = database.Database()
+
+    # Compare against the most recent weigh-in BEFORE this day, which is what makes the
+    # pounds-and-decimal-point check possible at all.
+    earlier = weight_store.load_weighings_between(
+        open_database,
+        day - datetime.timedelta(days=WEIGH_IN_LOOKBACK_DAYS),
+        day - datetime.timedelta(days=1),
+    )
+
+    previous = earlier[-1] if earlier else None
+    surprising = weight.describe_jump(previous, kilograms)
+
+    if surprising and not force:
+        open_database.close()
+        print()
+        print(surprising)
+        print()
+        print("  If that is right, record it with --force.")
+        print()
+        return 1
+
+    already_there = weight_store.load_weighing(open_database, day)
+
+    one_weighing = weight.Weighing(
+        day=day,
+        kilograms=kilograms,
+        # The clock is read here, at the edge, never inside the weight module.
+        recorded_at=datetime.datetime.now(),
+        source="manual",
+    )
+
+    weight_store.save_weighing(open_database, one_weighing)
+    open_database.close()
+
+    print()
+
+    if already_there is not None:
+        # A day holds one weigh-in, so this replaced something. Say so rather than
+        # letting a number quietly disappear.
+        print(f"  replaced {already_there.kilograms:g} kg with"
+              f" {kilograms:g} kg for {day.isoformat()}")
+    else:
+        print(f"  recorded {kilograms:g} kg for {day.isoformat()}")
+
+    if previous is not None:
+        difference, days_between = weight.change_between(previous, one_weighing)
+        print(f"  {difference:+.1f} kg since {previous.day.isoformat()}"
+              f" ({days_between} day(s) ago)")
+
+    print()
+
+    return 0
+
+
+def print_weights(weighings: list[weight.Weighing]) -> None:
+    """Print recent weigh-ins, oldest first, with the change between them."""
+    print_heading("WEIGH-INS")
+
+    if not weighings:
+        print("  none recorded")
+        return
+
+    previous = None
+
+    for one_weighing in weighings:
+        if previous is None:
+            change = ""
+        else:
+            difference, days_between = weight.change_between(previous, one_weighing)
+            change = f"   {difference:+.1f} kg over {days_between} day(s)"
+
+        # Where a reading came from is printed when it was not typed in, because a
+        # weight lifted from a DEXA report or from Garmin is a different kind of fact
+        # from one you read off your own scale that morning.
+        if one_weighing.source == "manual":
+            origin = ""
+        else:
+            origin = f"   [{one_weighing.source}]"
+
+        print(f"  {one_weighing.day.isoformat()}  "
+              f"{one_weighing.kilograms:6.1f} kg{change}{origin}")
+
+        previous = one_weighing
+
+    if len(weighings) < 2:
+        return
+
+    difference, days_between = weight.change_between(weighings[0], weighings[-1])
+
+    print()
+    print(f"  net {difference:+.1f} kg over {days_between} day(s)")
+    print()
+    # Said plainly because it is the single easiest way to read too much into this
+    # screen. Water, salt, glycogen and gut contents move weight by more than a real
+    # week of fat loss does.
+    print("  Day-to-day movement is mostly water and food weight. Only a run of")
+    print("  weigh-ins across weeks says anything about fat.")
+
+
+def run_weights(how_many_days: int) -> int:
+    """Show recent weigh-ins."""
+    last_day = datetime.date.today()
+    first_day = last_day - datetime.timedelta(days=how_many_days - 1)
+
+    open_database = database.Database()
+    weighings = weight_store.load_weighings_between(open_database, first_day, last_day)
+    open_database.close()
+
+    if not weighings:
+        print()
+        print(f"No weigh-ins in the last {how_many_days} days.")
+        print("Record one:")
+        print("    .venv/bin/python -m backend.cli.main weigh 80.0")
+        print()
+        return 1
+
+    print_weights(weighings)
+    print()
+
+    return 0
+
+
 def print_scan(one_scan: dexa.Scan) -> None:
     """Print one DEXA scan."""
     print()
@@ -1315,6 +1487,29 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="import one day only, as YYYY-MM-DD (default: every saved day)",
     )
 
+    weigh_command = subcommands.add_parser(
+        "weigh",
+        help="record a weigh-in",
+    )
+    weigh_command.add_argument("kilograms", type=float, help="your weight in kg, e.g. 80.0")
+    weigh_command.add_argument("--date", help="the day it belongs to (default: today)")
+    weigh_command.add_argument(
+        "--force",
+        action="store_true",
+        help="record it even though it is far from your last weigh-in",
+    )
+
+    weights_command = subcommands.add_parser(
+        "weights",
+        help="recent weigh-ins and the change between them",
+    )
+    weights_command.add_argument(
+        "--days",
+        type=int,
+        default=30,
+        help="how many days back to show (default: 30)",
+    )
+
     subcommands.add_parser(
         "body",
         help="show the most recent DEXA scan and what has changed since",
@@ -1421,6 +1616,12 @@ def main() -> int:
         parser.print_help()
         return 1
 
+    if arguments.command == "weigh":
+        return run_weigh(arguments.kilograms, arguments.date, arguments.force)
+
+    if arguments.command == "weights":
+        return run_weights(arguments.days)
+
     if arguments.command == "body":
         return run_body()
 
@@ -1480,6 +1681,7 @@ def main() -> int:
     # observation we were handed, the other is something you typed.
     open_database = database.Database()
     entries = food_store.load_entries_for_day(open_database, day)
+    recorded_weight = weight_store.load_weighing(open_database, day)
     open_database.close()
 
     # Only give up when there is nothing at all. Today is the ordinary case here: you
@@ -1504,6 +1706,7 @@ def main() -> int:
         show_provenance=arguments.provenance,
         entries=entries,
         target=target,
+        recorded_weight=recorded_weight,
     )
 
     return 0
