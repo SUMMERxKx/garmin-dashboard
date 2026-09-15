@@ -43,6 +43,7 @@ packages = [
     "backend.food",
     "backend.body",
     "backend.engine",
+    "backend.api",
 ]
 
 [tool.pytest.ini_options]

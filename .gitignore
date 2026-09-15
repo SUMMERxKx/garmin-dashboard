@@ -16,6 +16,9 @@ seed/food-library.yaml
 # The whole fixtures tree stays local. Even the 'sample' days are real days off the
 # watch, and a day folder is a day of someone's body.
 fixtures/
+# The dashboard's exported data. Same content as the database: every day of sleep,
+# weight and heart rate. The web app itself is tracked; what it reads is not.
+dashboard/public/data/
 .garmin_tokens/
 .env
 # Internal design docs -- kept local, not pushed

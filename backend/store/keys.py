@@ -45,6 +45,11 @@ DEFAULT_USER_ID = "me"
 #: split back into its parts without ambiguity.
 SEPARATOR = "#"
 
+#: What a food entry's key says it is, between the day and the timestamp. Named here
+#: rather than spelled out at each call site, so that recognising a food key and building
+#: one stay in the same file and cannot drift apart.
+FOOD_MARKER = f"{SEPARATOR}FOOD{SEPARATOR}"
+
 #: Sorts after every character that can appear in one of our keys, so a range whose
 #: upper bound ends with it includes that last day completely rather than stopping at
 #: the bare "DAY#2026-09-03#".

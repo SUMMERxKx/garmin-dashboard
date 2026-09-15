@@ -91,6 +91,46 @@ def load_entries_for_day(
     return entries
 
 
+def load_entries_between(
+    open_database: database.Database,
+    first_day: datetime.date,
+    last_day: datetime.date,
+    user_id: str = keys.DEFAULT_USER_ID,
+) -> dict[datetime.date, list[log.LoggedFood]]:
+    """Every food entry in a span, grouped by the day it belongs to.
+
+    One lookup for the whole range, matching `load_snapshots_between` and
+    `load_weighings_between`. Reading a month a day at a time works fine against SQLite
+    and becomes thirty network round trips against DynamoDB, so the span reader is worth
+    having before that move rather than after it.
+
+    A range over days returns every record in them -- snapshots and weigh-ins too -- so
+    the ones that are not food entries are skipped here.
+    """
+    lowest, highest = keys.day_range_bounds(first_day, last_day)
+
+    found = open_database.load_by_range(
+        partition_key=keys.user_partition(user_id),
+        lowest_sort_key=lowest,
+        highest_sort_key=highest,
+    )
+
+    entries_by_day: dict[datetime.date, list[log.LoggedFood]] = {}
+
+    for sort_key, record in found:
+        if keys.FOOD_MARKER not in sort_key:
+            continue
+
+        day = keys.day_from_key(sort_key)
+
+        if day is None:
+            continue
+
+        entries_by_day.setdefault(day, []).append(record_to_entry(record))
+
+    return entries_by_day
+
+
 def remove_entry(
     open_database: database.Database,
     sort_key: str,
