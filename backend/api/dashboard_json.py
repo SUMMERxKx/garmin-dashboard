@@ -272,7 +272,7 @@ def scan_to_json(scan: dexa.Scan | None) -> dict[str, Any] | None:
     A scan is a measurement taken on one date and it stays true for that date; spreading
     it across every day after it would turn one measurement into thirty and make a
     month-old figure look like this morning's. The dashboard shows it with its date
-    attached, so "19.2% fat" always reads as "19.2% on 6 September".
+    attached, so a fat percentage always reads as "that percentage, on that date".
     """
     if scan is None:
         return None
