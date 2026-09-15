@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+/* Dark mode driven by a class on <html> rather than the OS setting.
+   The component below styles every surface twice -- `bg-white dark:bg-zinc-900` and so
+   on -- and a dashboard you open at 6am should be whatever you chose last, not whatever
+   the laptop decided. `main.tsx` sets the class. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+}
