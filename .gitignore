@@ -13,7 +13,9 @@ htmlcov/
 # stays local. seed/food-library.template.yaml is the pristine, all-null version, and is
 # the one the repository publishes.
 seed/food-library.yaml
-fixtures/raw/
+# The whole fixtures tree stays local. Even the 'sample' days are real days off the
+# watch, and a day folder is a day of someone's body.
+fixtures/
 .garmin_tokens/
 .env
 # Internal design docs -- kept local, not pushed
@@ -27,6 +29,8 @@ RESUME.md
 RESUME-COMPLETE.md
 HANDOFF.md
 NOTEBOOK.md
+REBUILD.md
+README.md
 docs/
 docs/fr165-fields.local.md
 seed/food-library.local.yaml
