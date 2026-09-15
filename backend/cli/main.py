@@ -454,38 +454,34 @@ def print_recovery(recovery: normalize.Recovery) -> None:
 
 
 def print_body(body: normalize.Body, recorded: weight.Weighing | None) -> None:
-    """Print the body measurements.
+    """Print the weigh-in for this day.
 
-    Two possible sources for one number, so both are shown when they disagree. Our own
-    record wins the "weight" line because it is the one you chose to record; Garmin's is
-    printed beneath it rather than discarded, since a difference means one of them is
-    about a different moment -- and quietly picking a winner would hide that.
+    A weigh-in is a MANUAL entry, every morning, and nothing else counts as one. Garmin
+    will occasionally hand back a weight -- someone typed one into Connect once, or a
+    scan total got entered there -- and this deliberately ignores it. Two reasons:
+
+    1. It is not the same measurement. A morning weigh-in is taken at a consistent time,
+       before eating, which is what makes a run of them comparable. A number that turned
+       up in Connect at some unknown hour is not comparable with those, and mixing the
+       two would put a step in the trend that nothing in the body actually did.
+    2. It would hide a missed morning. If Garmin quietly filled the gap, a day you forgot
+       to weigh would look like a day you weighed -- and the gap is worth seeing.
+
+    The row is always printed, even when empty, because an empty slot is a prompt.
+    Garmin's number is still read and still stored in the snapshot; it is simply not
+    treated as a weigh-in. Where it went is visible under `today --provenance`.
     """
     print_heading("BODY")
 
-    if recorded is not None:
-        print_line("weight", show_number(recorded.kilograms, "kg", decimal_places=1))
-
-        if recorded.source != "manual":
-            print_line("  source", recorded.source)
-
-        if body.weight_kilograms is not None:
-            difference = body.weight_kilograms - recorded.kilograms
-
-            if abs(difference) >= 0.05:
-                print_line(
-                    "  Garmin says",
-                    f"{body.weight_kilograms:.1f} kg   ({difference:+.1f} kg)",
-                )
-
+    if recorded is None:
+        print_line("weight", NOTHING_TO_SHOW)
+        print_line("", "not weighed yet -- `weigh 80.0` records it")
         return
 
-    # Nothing recorded for this day. Garmin occasionally has one anyway, from a weight
-    # typed into Connect.
-    print_line("weight", show_number(body.weight_kilograms, "kg", decimal_places=1))
+    print_line("weight", show_number(recorded.kilograms, "kg", decimal_places=1))
 
-    if body.weight_kilograms is not None:
-        print_line("  source", "garmin -- not recorded here")
+    recorded_time = recorded.recorded_at.strftime("%H:%M")
+    print_line("  recorded at", recorded_time)
 
 
 def print_provenance(snapshot: normalize.DailySnapshot) -> None:
@@ -1262,6 +1258,17 @@ def print_weights(weighings: list[weight.Weighing]) -> None:
 
     print()
     print(f"  net {difference:+.1f} kg over {days_between} day(s)")
+
+    # You weigh every morning, so a gap is a missed morning rather than a rest day, and
+    # it is worth seeing. Averages quietly get worse as coverage drops, and nothing else
+    # on the screen would tell you that was happening.
+    days_covered = days_between + 1
+    missed = days_covered - len(weighings)
+
+    if missed > 0:
+        print(f"  {len(weighings)} weigh-ins across {days_covered} days"
+              f" -- {missed} morning(s) missed")
+
     print()
     # Said plainly because it is the single easiest way to read too much into this
     # screen. Water, salt, glycogen and gut contents move weight by more than a real
@@ -1684,11 +1691,12 @@ def main() -> int:
     recorded_weight = weight_store.load_weighing(open_database, day)
     open_database.close()
 
-    # Only give up when there is nothing at all. Today is the ordinary case here: you
-    # have logged breakfast, and Garmin has nothing yet because the day is not over and
-    # the watch has not been fetched. Refusing to show the food you just typed, because
-    # the OTHER half of the day is missing, would be exactly backwards.
-    if not saved_responses and not entries:
+    # Only give up when there is nothing at all -- no Garmin data, no food, no weigh-in.
+    # Today is the ordinary case here: you have weighed yourself and logged breakfast,
+    # and Garmin has nothing yet because the day is not over and the watch has not been
+    # fetched. Refusing to show what you just typed, because the OTHER part of the day is
+    # missing, would be exactly backwards.
+    if not saved_responses and not entries and recorded_weight is None:
         explain_that_the_day_is_missing(day)
         return 1
 
@@ -1696,7 +1704,11 @@ def main() -> int:
 
     if not saved_responses:
         print()
-        print(f"  (no Garmin data for {day.isoformat()} yet -- showing the food log only)")
+        # Deliberately vague about WHICH of the two it is showing, because it may be
+        # the food, the weigh-in, or both, and listing them here would go stale the next
+        # time something else becomes part of a day.
+        print(f"  (no Garmin data for {day.isoformat()} yet"
+              f" -- showing what has been recorded here)")
 
     whole_library = library.load_library()
     target = whole_library.target_in_force_on(day)
