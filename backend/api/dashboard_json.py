@@ -79,13 +79,15 @@ from __future__ import annotations
 import datetime
 from typing import Any
 
+from backend.body import dexa
 from backend.body import weight
+from backend.food import library
 from backend.food import log
 from backend.garmin import normalize
 
 #: Bumped whenever a key changes meaning or disappears. Adding a new key does not need a
 #: bump: a browser that does not know about it simply ignores it.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def date_or_none(value: datetime.date | datetime.datetime | None) -> str | None:
@@ -189,6 +191,9 @@ def weighing_to_json(weighing: weight.Weighing | None) -> dict[str, Any] | None:
         "kilograms": weighing.kilograms,
         "recorded_at": date_or_none(weighing.recorded_at),
         "source": weighing.source,
+        # A scale's body fat estimate, not a scan's measurement. The dashboard labels
+        # the two differently for good reason -- see the note on `Weighing.fat_percent`.
+        "fat_percent": weighing.fat_percent,
     }
 
 
@@ -260,9 +265,71 @@ def day_to_json(
     }
 
 
+def scan_to_json(scan: dexa.Scan | None) -> dict[str, Any] | None:
+    """The most recent DEXA scan, or null if there has never been one.
+
+    Body composition is NOT a daily reading and is deliberately not attached to a day.
+    A scan is a measurement taken on one date and it stays true for that date; spreading
+    it across every day after it would turn one measurement into thirty and make a
+    month-old figure look like this morning's. The dashboard shows it with its date
+    attached, so "19.2% fat" always reads as "19.2% on 6 September".
+    """
+    if scan is None:
+        return None
+
+    return {
+        "scan_date": scan.scan_date.isoformat(),
+        "provider": scan.provider,
+        "total_mass_kilograms": scan.total_mass_kilograms,
+        "fat_mass_kilograms": scan.fat_mass_kilograms,
+        "lean_and_bone_kilograms": scan.lean_and_bone_kilograms,
+        "fat_percent": scan.fat_percent,
+        "visceral_fat_grams": scan.visceral_fat_grams,
+        "bone_mineral_density": scan.bone_mineral_density,
+        "bmd_t_score": scan.bmd_t_score,
+        "bmd_z_score": scan.bmd_z_score,
+    }
+
+
+def target_to_json(target: library.MacroTarget | None) -> dict[str, Any] | None:
+    """The macro target in force, or null if none has been set.
+
+    Sent so the dashboard can draw "2078 / 2350 kcal" without hard-coding a number that
+    lives in the food library. Targets are dated, so this is the one that applied on the
+    last day of the span rather than whichever is newest.
+    """
+    if target is None:
+        return None
+
+    return {
+        "effective_from": target.effective_from.isoformat(),
+        "goal": target.goal,
+        "kilocalories": target.kilocalories,
+        "protein_grams": target.protein_grams,
+        "carbohydrate_grams": target.carbohydrate_grams,
+        "fat_grams": target.fat_grams,
+    }
+
+
+def profile_to_json(height_centimetres: float | None, birth_date: str | None) -> dict[str, Any]:
+    """The few fixed facts a body-composition panel needs.
+
+    Height is here because BMI cannot be computed without it, and it is the only input
+    to that sum the app does not already hold. Age is sent as a birth date rather than a
+    number so it never goes stale in a cached payload.
+    """
+    return {
+        "height_centimetres": height_centimetres,
+        "birth_date": birth_date,
+    }
+
+
 def span_to_json(
     days: list[dict[str, Any]],
     generated_at: datetime.datetime,
+    latest_scan: dict[str, Any] | None = None,
+    macro_target: dict[str, Any] | None = None,
+    profile: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Wrap the days in the envelope the dashboard actually fetches.
 
@@ -275,5 +342,11 @@ def span_to_json(
         "generated_at": generated_at.isoformat(),
         "first_day": days[0]["day"] if days else None,
         "last_day": days[-1]["day"] if days else None,
+        # These three sit beside the days rather than inside them, because none of them
+        # is a daily reading: a scan happens on one date, a target applies from a date
+        # onwards, and height does not change.
+        "latest_scan": latest_scan,
+        "macro_target": macro_target,
+        "profile": profile,
         "days": days,
     }

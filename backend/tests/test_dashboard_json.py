@@ -212,7 +212,42 @@ def test_a_real_weigh_in_carries_its_source_and_time() -> None:
         "kilograms": 75.0,
         "recorded_at": "2026-09-14T07:02:28",
         "source": "manual",
+        "fat_percent": None,
     }
+
+
+def test_a_morning_without_a_body_fat_reading_sends_null() -> None:
+    """Most mornings will not have one, and absent must not read as zero percent."""
+    weighing = weight.Weighing(
+        day=DAY,
+        kilograms=75.0,
+        recorded_at=datetime.datetime(2026, 9, 14, 7, 2, 28),
+        source="manual",
+    )
+
+    day = dashboard_json.day_to_json(a_full_snapshot(), weighing=weighing)
+
+    assert day["weight"]["fat_percent"] is None
+
+
+def test_a_scale_body_fat_reading_travels_with_the_weigh_in() -> None:
+    """The scale's estimate rides on the morning entry, not on the scan.
+
+    Kept apart from a DEXA figure on purpose: a scale infers composition from electrical
+    resistance and moves with hydration, while a scan measures it. Same units, different
+    kinds of fact, so they must never land in the same field.
+    """
+    weighing = weight.Weighing(
+        day=DAY,
+        kilograms=75.0,
+        recorded_at=datetime.datetime(2026, 9, 14, 7, 2, 28),
+        source="manual",
+        fat_percent=18.4,
+    )
+
+    day = dashboard_json.day_to_json(a_full_snapshot(), weighing=weighing)
+
+    assert day["weight"]["fat_percent"] == 18.4
 
 
 # ---------------------------------------------------------------------------

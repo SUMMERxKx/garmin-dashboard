@@ -26,6 +26,8 @@ from typing import Any
 
 from backend import paths
 from backend.api import dashboard_json
+from backend.body import dexa
+from backend.food import library
 from backend.garmin import normalize
 from backend.store import database
 from backend.store import day_store
@@ -143,9 +145,48 @@ def main() -> int:
         print("Fetch and import some first.")
         return 1
 
+    # Body composition, the macro target and the fixed profile facts are read here and
+    # handed in. All three are optional: a fresh install has no scan and no library, and
+    # the dashboard is written to show what it has rather than to require all of it.
+    latest_scan = None
+    macro_target = None
+    profile = None
+
+    try:
+        scans = dexa.load_scans()
+        if scans:
+            # Newest scan wins. `scan_nearest_to` exists for scoring a past day against
+            # the scan that applied then; the dashboard header wants the current one.
+            latest_scan = dashboard_json.scan_to_json(
+                max(scans, key=lambda one: one.scan_date)
+            )
+    except FileNotFoundError:
+        pass
+
+    try:
+        whole_library = library.load_library()
+        macro_target = dashboard_json.target_to_json(
+            whole_library.target_in_force_on(last_day)
+        )
+        profile = dashboard_json.profile_to_json(
+            whole_library.profile.get("height_cm"),
+            # PyYAML parses an unquoted 2003-05-01 into a date object, so this may be
+            # a date or a string depending on how the file was written. isoformat() on
+            # whichever it is keeps the wire value text either way.
+            str(whole_library.profile.get("birth_date") or "") or None,
+        )
+    except (FileNotFoundError, AttributeError):
+        pass
+
     # The clock is read here, at the edge, and passed inwards -- so every function that
     # builds the payload stays testable with a fixed time.
-    payload = dashboard_json.span_to_json(days, datetime.datetime.now())
+    payload = dashboard_json.span_to_json(
+        days,
+        datetime.datetime.now(),
+        latest_scan=latest_scan,
+        macro_target=macro_target,
+        profile=profile,
+    )
 
     output_path = Path(arguments.out)
     write_payload(payload, output_path)

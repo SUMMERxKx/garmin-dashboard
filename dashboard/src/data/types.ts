@@ -51,6 +51,39 @@ export type Weighing = {
   kilograms: number;
   recorded_at: string | null;
   source: string;
+  /**
+   * The scale's own body-fat estimate, if it gave one. NOT the same measurement as a
+   * DEXA percentage: a scale infers composition from electrical resistance and moves
+   * with hydration, so it is useful for its trend and not for its absolute value.
+   */
+  fat_percent: number | null;
+};
+
+export type Scan = {
+  scan_date: string;
+  provider: string | null;
+  total_mass_kilograms: number | null;
+  fat_mass_kilograms: number | null;
+  lean_and_bone_kilograms: number | null;
+  fat_percent: number | null;
+  visceral_fat_grams: number | null;
+  bone_mineral_density: number | null;
+  bmd_t_score: number | null;
+  bmd_z_score: number | null;
+};
+
+export type MacroTarget = {
+  effective_from: string;
+  goal: string;
+  kilocalories: number;
+  protein_grams: number;
+  carbohydrate_grams: number;
+  fat_grams: number;
+};
+
+export type Profile = {
+  height_centimetres: number | null;
+  birth_date: string | null;
 };
 
 export type FoodEntry = {
@@ -117,5 +150,10 @@ export type DaysPayload = {
   generated_at: string;
   first_day: string | null;
   last_day: string | null;
+  /** Newest DEXA scan, or null. Not a daily reading -- it belongs to its own date. */
+  latest_scan: Scan | null;
+  /** The macro target in force on the last day of the span. */
+  macro_target: MacroTarget | null;
+  profile: Profile | null;
   days: Day[];
 };

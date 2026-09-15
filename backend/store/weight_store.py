@@ -26,6 +26,7 @@ def weighing_to_record(one_weighing: weight.Weighing) -> dict:
         "kilograms": one_weighing.kilograms,
         "recorded_at": one_weighing.recorded_at.isoformat(),
         "source": one_weighing.source,
+        "fat_percent": one_weighing.fat_percent,
     }
 
 
@@ -36,6 +37,9 @@ def record_to_weighing(record: dict) -> weight.Weighing:
         kilograms=record["kilograms"],
         recorded_at=datetime.datetime.fromisoformat(record["recorded_at"]),
         source=record.get("source", "manual"),
+        # `.get` rather than `[...]`: entries written before body fat existed have no
+        # such key, and they must keep loading rather than raising.
+        fat_percent=record.get("fat_percent"),
     )
 
 

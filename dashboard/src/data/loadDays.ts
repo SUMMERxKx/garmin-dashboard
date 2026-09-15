@@ -15,7 +15,7 @@ import type { DaysPayload } from "./types";
 const DATA_URL = "/data/days.json";
 
 /** The schema version this app was written against. */
-const EXPECTED_SCHEMA_VERSION = 1;
+const EXPECTED_SCHEMA_VERSION = 2;
 
 export async function loadDays(): Promise<DaysPayload> {
   const response = await fetch(DATA_URL);

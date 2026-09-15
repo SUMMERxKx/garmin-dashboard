@@ -51,6 +51,18 @@ class Weighing:
     #: than the disagreement itself.
     source: str = "manual"
 
+    #: Body fat percentage, if the scale reported one that morning. Optional because
+    #: most mornings will not have it, and None means "not measured" rather than zero.
+    #:
+    #: This is NOT the same measurement as a DEXA fat percentage and must never be shown
+    #: as though it were. A scale estimates body fat by passing a small current through
+    #: the body and inferring composition from the resistance, which moves with how
+    #: hydrated you are, what you ate and how warm your feet are -- it can swing a couple
+    #: of points between two mornings that were physically identical. A DEXA measures it.
+    #: The scale reading is useful for its TREND over weeks; the scan is the anchor that
+    #: says what the trend is a trend around.
+    fat_percent: float | None = None
+
 
 def describe_problem(kilograms: float) -> str | None:
     """Say what is wrong with a weight, or None if it looks fine.

@@ -161,6 +161,13 @@ class Library:
     meals: dict[str, Meal] = dataclasses.field(default_factory=dict)
     templates: dict[str, DayTemplate] = dataclasses.field(default_factory=dict)
     targets: list[MacroTarget] = dataclasses.field(default_factory=list)
+
+    #: The fixed facts about the person: sex, height, birth date, timezone. Kept as a
+    #: plain dictionary rather than a dataclass because nothing computes with it here --
+    #: it is carried so a dashboard can work out BMI and age, and giving every optional
+    #: key a typed field would be ceremony around a passthrough.
+    profile: dict[str, Any] = dataclasses.field(default_factory=dict)
+
     provisional: bool = True
 
     def target_in_force_on(self, day: datetime.date) -> MacroTarget | None:
@@ -273,6 +280,8 @@ def load_library(library_path: str | Path = DEFAULT_LIBRARY_PATH) -> Library:
 
     for entry in contents.get("macro_targets", []):
         library.targets.append(read_target(entry))
+
+    library.profile = contents.get("profile", {}) or {}
 
     return library
 

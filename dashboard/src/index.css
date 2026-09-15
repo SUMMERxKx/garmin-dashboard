@@ -1,14 +1,37 @@
 @import "tailwindcss";
 
-/* Dark mode driven by a class on <html> rather than the OS setting.
-   The component below styles every surface twice -- `bg-white dark:bg-zinc-900` and so
-   on -- and a dashboard you open at 6am should be whatever you chose last, not whatever
-   the laptop decided. `main.tsx` sets the class. */
+/* Dark by default and dark on purpose. The palette below is the one thing that makes
+   this feel like a cherry blossom rather than a generic dark dashboard, so it is written
+   as tokens rather than scattered through class names -- changing the season means
+   changing this block, not forty files. */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+
+  /* --- ground: warm plum-black, never neutral grey ---------------------------------
+     A true #000 under pink reads as cheap neon. Tilting the dark toward plum keeps the
+     blossom colours looking like they belong to the same light. */
+  --color-night-900: oklch(0.155 0.022 336);
+  --color-night-850: oklch(0.185 0.026 335);
+  --color-night-800: oklch(0.215 0.030 334);
+  --color-night-700: oklch(0.275 0.034 333);
+  --color-night-600: oklch(0.360 0.032 332);
+
+  /* --- blossom: the accent, light to deep --------------------------------------- */
+  --color-blossom-100: oklch(0.945 0.028 350);
+  --color-blossom-200: oklch(0.885 0.055 350);
+  --color-blossom-300: oklch(0.820 0.088 352);
+  --color-blossom-400: oklch(0.755 0.125 354);
+  --color-blossom-500: oklch(0.690 0.155 357);
+  --color-blossom-600: oklch(0.610 0.160 360);
+
+  /* --- supporting hues, kept in the same family so nothing shouts --------------- */
+  --color-leaf-400: oklch(0.790 0.115 155);
+  --color-sky-400: oklch(0.775 0.110 235);
+  --color-amber-400: oklch(0.820 0.130 75);
+  --color-plum-400: oklch(0.720 0.130 305);
 }
 
 html,
@@ -19,4 +42,17 @@ body,
 
 body {
   margin: 0;
+  background: var(--color-night-900);
+}
+
+/* Numbers must not jitter as they change, and a column of figures has to line up on the
+   digits. Applied globally because nearly every number on this page is tabular. */
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The pixel avatar is a small bitmap blown up. Without this the browser smooths it into
+   mush, which is the opposite of the intent. */
+.pixelated {
+  image-rendering: pixelated;
 }
