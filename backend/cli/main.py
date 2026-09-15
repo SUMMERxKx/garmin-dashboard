@@ -27,6 +27,7 @@ import argparse
 import dataclasses
 import datetime
 
+from backend.body import dexa
 from backend.food import library
 from backend.food import log
 from backend.garmin import normalize
@@ -1120,6 +1121,146 @@ def print_day_running_total(day: datetime.date, whole_library: library.Library) 
     print()
 
 
+def print_scan(one_scan: dexa.Scan) -> None:
+    """Print one DEXA scan."""
+    print()
+    print(f"== DEXA, {one_scan.scan_date.strftime('%A %d %B %Y')} ==")
+
+    if one_scan.provider:
+        print(f"   {one_scan.provider}")
+
+    print_heading("COMPOSITION")
+    print_line("total mass", show_number(one_scan.total_mass_kilograms, "kg", 2))
+    print_line("fat mass", show_number(one_scan.fat_mass_kilograms, "kg", 2))
+    print_line("lean and bone", show_number(one_scan.lean_and_bone_kilograms, "kg", 2))
+    print_line("body fat", show_number(one_scan.fat_percent, "%", 1))
+    print_line("visceral fat", show_number(one_scan.visceral_fat_grams, "g"))
+
+    print_heading("BONE")
+    print_line("density", show_number(one_scan.bone_mineral_density, "g/cm2", 3))
+    # Printed with what they mean. A T-score on its own is a number nobody can place.
+    print_line("T-score", f"{show_number(one_scan.bmd_t_score, decimal_places=1)}"
+                          f"   vs a young adult")
+    print_line("Z-score", f"{show_number(one_scan.bmd_z_score, decimal_places=1)}"
+                          f"   vs your own age group")
+
+    if not one_scan.regions:
+        return
+
+    print_heading("BY REGION")
+    print(build_region_row("region", "fat", "lean", "% fat"))
+    print("  " + "-" * (len(build_region_row("", "", "", "")) - 2))
+
+    for one_region in one_scan.regions:
+        print(
+            build_region_row(
+                one_region.name,
+                show_number(one_region.fat_kilograms, "kg", 2),
+                show_number(one_region.lean_kilograms, "kg", 2),
+                show_number(one_region.fat_percent, "%", 1),
+            )
+        )
+
+
+def build_region_row(*cells: str) -> str:
+    """Lay out one row of the regional table."""
+    widths = [16, 10, 10, 8]
+
+    laid_out = []
+
+    for position, one_cell in enumerate(cells):
+        if position == 0:
+            laid_out.append(one_cell.ljust(widths[position]))
+        else:
+            laid_out.append(one_cell.rjust(widths[position]))
+
+    return "  " + "  ".join(laid_out)
+
+
+def print_change_since_scan(one_scan: dexa.Scan) -> None:
+    """Compare the scan's total mass to the most recent weight we have.
+
+    Deliberately stops at the weight change and refuses to split it into fat and lean.
+    That split cannot be measured between scans -- it can only be modelled, and a
+    modelled split printed beside measured numbers reads exactly as solid as they do.
+    The second scan is what turns the estimate into a fact.
+    """
+    open_database = database.Database()
+    recent = day_store.load_snapshots_between(
+        open_database,
+        one_scan.scan_date,
+        datetime.date.today(),
+    )
+    open_database.close()
+
+    weighings = []
+
+    for one_snapshot in recent:
+        if one_snapshot.body.weight_kilograms is not None:
+            weighings.append(one_snapshot)
+
+    if not weighings:
+        print_heading("SINCE THE SCAN")
+        print("  no weigh-in recorded since the scan, so there is nothing to compare")
+        return
+
+    latest = weighings[-1]
+    change = latest.body.weight_kilograms - one_scan.total_mass_kilograms
+    days_between = (latest.day - one_scan.scan_date).days
+
+    print_heading("SINCE THE SCAN")
+    # "weight on 2026-09-12" is longer than the default label column, so this small
+    # block sets its own width rather than silently running into its own numbers.
+    width = len("weight on 0000-00-00") + 2
+
+    print_line("scan total mass", show_number(one_scan.total_mass_kilograms, "kg", 2), width)
+    print_line(
+        f"weight on {latest.day.isoformat()}",
+        show_number(latest.body.weight_kilograms, "kg", 1),
+        width,
+    )
+    print_line("change", f"{change:+.2f} kg over {days_between} day(s)", width)
+    print()
+    print("  What that change is MADE OF cannot be measured between scans -- only")
+    print("  modelled. The next scan is what turns the estimate into a fact.")
+
+
+def run_body() -> int:
+    """Show the most recent DEXA scan and what has happened since."""
+    scans = dexa.load_scans()
+
+    if not scans:
+        print()
+        print("No DEXA scans recorded.")
+        print(f"Add one to {dexa.DEFAULT_SCANS_PATH}")
+        print()
+        return 1
+
+    latest = scans[-1]
+
+    problem = latest.check_adds_up()
+
+    print_scan(latest)
+
+    if latest.total_mass_kilograms is not None:
+        print_change_since_scan(latest)
+
+    if problem:
+        print()
+        print(f"  !! this scan does not reconcile: {problem}")
+        print("     check the transcription against the report")
+        print()
+        return 1
+
+    if len(scans) > 1:
+        print()
+        print(f"  ({len(scans)} scans recorded; showing the most recent)")
+
+    print()
+
+    return 0
+
+
 def build_food_row(*cells: str) -> str:
     """Lay out one row of the `foods` table."""
     widths = [18, 25, 18, 9, 6, 6, 6, 6]
@@ -1172,6 +1313,11 @@ def build_argument_parser() -> argparse.ArgumentParser:
     import_command.add_argument(
         "--date",
         help="import one day only, as YYYY-MM-DD (default: every saved day)",
+    )
+
+    subcommands.add_parser(
+        "body",
+        help="show the most recent DEXA scan and what has changed since",
     )
 
     subcommands.add_parser(
@@ -1274,6 +1420,9 @@ def main() -> int:
         # Nobody typed a subcommand. Show the help rather than doing nothing silently.
         parser.print_help()
         return 1
+
+    if arguments.command == "body":
+        return run_body()
 
     if arguments.command == "foods":
         return run_foods()

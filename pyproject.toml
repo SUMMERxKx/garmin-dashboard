@@ -35,7 +35,14 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 # Only the NEW build is an installed package. We add each sub-package to this list as
 # we create it, so this line is always an honest inventory of what exists.
-packages = ["backend", "backend.garmin", "backend.cli", "backend.store", "backend.food"]
+packages = [
+    "backend",
+    "backend.garmin",
+    "backend.cli",
+    "backend.store",
+    "backend.food",
+    "backend.body",
+]
 
 [tool.pytest.ini_options]
 # Points at the new build only. The old code in reference/ is for reading, not running.
