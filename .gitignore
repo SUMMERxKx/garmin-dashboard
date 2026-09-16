@@ -21,23 +21,12 @@ fixtures/
 dashboard/public/data/
 .garmin_tokens/
 .env
-# Internal design docs -- kept local, not pushed. README.md is deliberately NOT in
-# this list: it is the front page of a public repository and contains no readings,
-# only what the project is and how to run it.
-ENGINE.md
-IDEAS.md
-LEARNING.md
-PLAN.md
-PRODUCT.md
-WALKTHROUGH.md
-RESUME.md
-RESUME-COMPLETE.md
-HANDOFF.md
-NOTEBOOK.md
-REBUILD.md
+# docs/ is everything that is yours rather than the code's, and the whole tree stays
+# local: the design documents, the build notebook, the first build's hand-off notes, and
+# docs/personal/ -- DEXA reports, the diet summary, dexa-scans.yaml. README.md is
+# deliberately NOT here: it is the front page of a public repository and holds no
+# readings, only what the project is and how to run it.
 docs/
-docs/fr165-fields.local.md
-seed/food-library.local.yaml
 
 # Local database -- contains real health data
 garmin-dashboard.db
@@ -46,8 +35,7 @@ garmin-dashboard.db
 # The previous build, kept locally for reference only -- not pushed.
 reference/
 
-# Personal documents -- DEXA scans, diet reports, anything with your name or body on it.
-# Broad on purpose: it is far better to have to force-add a harmless PDF than to push a
-# body-composition report to a public repository once.
+# Belt and braces for personal documents, wherever one lands: it is far better to have
+# to force-add a harmless PDF than to push a body-composition report to a public
+# repository once.
 *.pdf
-private/

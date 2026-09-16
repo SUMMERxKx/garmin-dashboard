@@ -13,7 +13,7 @@ scan is what tells you how good the estimate was.
 
 Where the numbers come from
 ---------------------------
-`private/dexa-scans.yaml`, which is gitignored along with the rest of that folder. The
+`docs/personal/dexa-scans.yaml`, which is gitignored along with the rest of `docs/`. The
 report itself is a medical document with your name, your patient id and the clinic's
 details on it; none of that belongs in a code repository, and none of it is needed here.
 Only the measurements are copied across.
@@ -36,8 +36,8 @@ import yaml
 
 from backend import paths
 
-#: Where the scans live. Inside `private/`, which is gitignored entirely.
-DEFAULT_SCANS_PATH = paths.PROJECT_ROOT / "private" / "dexa-scans.yaml"
+#: Where the scans live. Inside `docs/personal/`; the whole `docs/` tree is gitignored.
+DEFAULT_SCANS_PATH = paths.PROJECT_ROOT / "docs" / "personal" / "dexa-scans.yaml"
 
 #: One pound in kilograms. The exact international definition, not an approximation --
 #: a scan is the most precise measurement in this project and it would be careless to
