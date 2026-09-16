@@ -1,58 +1,131 @@
 @import "tailwindcss";
 
-/* Dark by default and dark on purpose. The palette below is the one thing that makes
-   this feel like a cherry blossom rather than a generic dark dashboard, so it is written
-   as tokens rather than scattered through class names -- changing the season means
-   changing this block, not forty files. */
-@custom-variant dark (&:where(.dark, .dark *));
+/* Mission control, not a fitness app.
+
+   The reference is the SpaceX webcast telemetry overlay: near-black ground, hairline
+   rules, wide-tracked uppercase labels, and numbers that are the brightest thing on
+   screen. Colour is rationed -- one hue per kind of signal, used on the marks and
+   never on the text, so the eye finds the data by looking for colour and reads it in
+   white. All of it is written as tokens here rather than scattered through class names,
+   so changing the palette is a change to this block and not to forty files. */
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", monospace;
+  --font-sans: "Barlow", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-condensed: "Barlow Condensed", "Barlow", ui-sans-serif, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
-  /* --- ground: warm plum-black, never neutral grey ---------------------------------
-     A true #000 under pink reads as cheap neon. Tilting the dark toward plum keeps the
-     blossom colours looking like they belong to the same light. */
-  --color-night-900: oklch(0.155 0.022 336);
-  --color-night-850: oklch(0.185 0.026 335);
-  --color-night-800: oklch(0.215 0.030 334);
-  --color-night-700: oklch(0.275 0.034 333);
-  --color-night-600: oklch(0.360 0.032 332);
+  /* --- hull: the greys. Cool, never warm, and never pure black -------------------
+     True #000 kills the depth between the page and the panels. A faint blue tilt keeps
+     the greys reading as one material. */
+  --color-hull-950: #07080a;
+  --color-hull-900: #0c0d10;
+  --color-hull-800: #14161a;
+  --color-hull-700: #1c1f25;
+  --color-hull-600: #262a31;
+  --color-hull-500: #3a3f48;
+  --color-hull-400: #5b616c;
+  --color-hull-300: #8b919c;
+  --color-hull-200: #b5bac2;
+  --color-hull-100: #e6e8eb;
 
-  /* --- blossom: the accent, light to deep --------------------------------------- */
-  --color-blossom-100: oklch(0.945 0.028 350);
-  --color-blossom-200: oklch(0.885 0.055 350);
-  --color-blossom-300: oklch(0.820 0.088 352);
-  --color-blossom-400: oklch(0.755 0.125 354);
-  --color-blossom-500: oklch(0.690 0.155 357);
-  --color-blossom-600: oklch(0.610 0.160 360);
+  /* --- one hue per kind of signal. Validated against the panel surface for
+     colour-vision separation; see NOTEBOOK.md for the check. ------------------- */
+  --color-tele-400: #3d8ccc;   /* telemetry blue: heart, movement, the default series */
+  --color-plume-400: #cf6f25;  /* engine orange: energy burned, warnings */
+  --color-signal-400: #33a366; /* green: energy taken in, "over goal" */
+  --color-ion-400: #8f68d2;    /* violet: sleep */
+  --color-solar-400: #ad8d1c;  /* yellow: body battery, weight */
+}
 
-  /* --- supporting hues, kept in the same family so nothing shouts --------------- */
-  --color-leaf-400: oklch(0.790 0.115 155);
-  --color-sky-400: oklch(0.775 0.110 235);
-  --color-amber-400: oklch(0.820 0.130 75);
-  --color-plum-400: oklch(0.720 0.130 305);
+html {
+  /* The one line that makes anchor jumps glide instead of snap. */
+  scroll-behavior: smooth;
+  /* Reserve the scrollbar's width so the layout does not shift when a page grows past
+     the fold. */
+  scrollbar-gutter: stable;
 }
 
 html,
 body,
 #root {
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
   margin: 0;
-  background: var(--color-night-900);
+  background: var(--color-hull-950);
+  color: var(--color-hull-100);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
 }
 
-/* Numbers must not jitter as they change, and a column of figures has to line up on the
-   digits. Applied globally because nearly every number on this page is tabular. */
+/* Digits must not jitter as they change, and a column of figures has to line up on
+   the digits. Only for columns and axes -- a large standalone number uses the font's
+   proportional figures, which sit tighter at display sizes. */
 .tabular {
   font-variant-numeric: tabular-nums;
 }
 
-/* The pixel avatar is a small bitmap blown up. Without this the browser smooths it into
-   mush, which is the opposite of the intent. */
-.pixelated {
-  image-rendering: pixelated;
+/* The wide-tracked uppercase caption that labels every readout. One class, so every
+   label on every page is the same label. */
+.readout-label {
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-hull-300);
+}
+
+/* The backdrop: a still starfield and a faint grid, in pure CSS.
+
+   The previous background was a Canvas animation redrawing ~150 blurred shapes every
+   frame, and that was the clunky scroll -- the compositor had to repaint the whole
+   viewport on every scroll tick. This is three layered gradients painted once. It costs
+   nothing to scroll past, and it still reads as looking out of a window. */
+.starfield {
+  background-color: var(--color-hull-950);
+  background-image:
+    radial-gradient(1px 1px at 12% 18%, rgba(230, 232, 235, 0.55) 50%, transparent 51%),
+    radial-gradient(1px 1px at 68% 8%, rgba(230, 232, 235, 0.45) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 84% 36%, rgba(230, 232, 235, 0.5) 50%, transparent 51%),
+    radial-gradient(1px 1px at 32% 62%, rgba(230, 232, 235, 0.35) 50%, transparent 51%),
+    radial-gradient(1px 1px at 52% 84%, rgba(230, 232, 235, 0.4) 50%, transparent 51%),
+    radial-gradient(1.5px 1.5px at 8% 88%, rgba(230, 232, 235, 0.3) 50%, transparent 51%),
+    radial-gradient(1px 1px at 92% 72%, rgba(230, 232, 235, 0.45) 50%, transparent 51%),
+    radial-gradient(1px 1px at 44% 30%, rgba(230, 232, 235, 0.3) 50%, transparent 51%),
+    radial-gradient(1px 1px at 76% 58%, rgba(230, 232, 235, 0.35) 50%, transparent 51%),
+    radial-gradient(1px 1px at 22% 44%, rgba(230, 232, 235, 0.25) 50%, transparent 51%),
+    linear-gradient(to right, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    radial-gradient(120% 80% at 50% -10%, #12151b 0%, var(--color-hull-950) 60%);
+  background-size:
+    100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%,
+    100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%,
+    64px 64px, 64px 64px,
+    100% 100%;
+}
+
+/* Native form controls, restyled to sit on the hull rather than fight it. */
+.field {
+  width: 100%;
+  border: 1px solid var(--color-hull-600);
+  background: var(--color-hull-900);
+  color: var(--color-hull-100);
+  padding: 0.6rem 0.75rem;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+}
+
+.field:focus {
+  border-color: var(--color-tele-400);
+}
+
+.field::placeholder {
+  color: var(--color-hull-400);
+}
+
+/* A date input's calendar icon is black by default and vanishes on a dark ground. */
+.field::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
 }

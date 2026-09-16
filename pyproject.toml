@@ -54,6 +54,10 @@ filterwarnings = [
     # Warnings are errors by default, so a deprecation in OUR code fails the build
     # rather than scrolling past.
     "error",
+    # Not our code: starlette's test client imports a name anyio has deprecated. It is
+    # their upgrade to make, and failing our suite over it would teach us to ignore the
+    # rule above. Scoped to that one message so anything else still fails loudly.
+    "ignore:The anyio.abc.BlockingPortal alias is deprecated:DeprecationWarning",
 ]
 
 [tool.ruff]
@@ -85,8 +89,14 @@ ignore = [
 # `garmin_client.fetch_one_day`.
 force-single-line = true
 
-# NOTE: per-file-ignores were removed along with the old code. We add each one back at
-# the moment the new build actually needs it, with the reason written beside it.
+# Per-file ignores are added at the moment the build needs them, with the reason beside
+# each one.
+[tool.ruff.lint.per-file-ignores]
+# B008 flags a function call as a default argument, because Python evaluates it once
+# at definition time. FastAPI relies on exactly that: `fastapi.Depends(open_database)`
+# in a default is how an endpoint declares what it needs. It is the framework's idiom,
+# not the mistake the rule is looking for.
+"backend/api/server.py" = ["B008"]
 
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:"]

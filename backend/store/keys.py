@@ -16,6 +16,7 @@ Every record has a two-part key:
     pk            sk
     USER#me       DAY#2026-09-12#SNAPSHOT
     USER#me       DAY#2026-09-12#WEIGHT
+    USER#me       DAY#2026-09-12#INTAKE
     USER#me       DAY#2026-09-12#FOOD#20260912T120000000000
 
 Why this shape
@@ -76,6 +77,16 @@ def snapshot_key(day: datetime.date) -> str:
 def weight_key(day: datetime.date) -> str:
     """The weigh-in for one day. At most one, because a day has one morning."""
     return f"{day_prefix(day)}WEIGHT"
+
+
+def intake_key(day: datetime.date) -> str:
+    """The typed-in calorie total for one day. At most one, for the same reason as weight.
+
+    A manual total is "what the whole day added up to", so a second one for the same day
+    is a correction of the first rather than an addition to it -- and it REPLACES it.
+    Letting two coexist would add them together and double the day.
+    """
+    return f"{day_prefix(day)}INTAKE"
 
 
 def food_entry_key(day: datetime.date, logged_at: datetime.datetime) -> str:

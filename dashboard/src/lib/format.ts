@@ -8,6 +8,10 @@
 
 /** Missing shows as an em dash. Never as 0, which would be a measurement. */
 export const NOTHING = "—";
+
+const METRES_PER_KILOMETRE = 1000;
+const SECONDS_PER_MINUTE = 60;
+
 export function formatDuration(minutes: number | null | undefined): string {
   if (minutes === null || minutes === undefined) {
     return NOTHING;
@@ -36,6 +40,63 @@ export function formatNumber(
   });
 }
 
+/** "+312" / "−85". The sign is the information, so it is never dropped. */
+export function formatSigned(value: number | null | undefined, places = 0): string {
+  if (value === null || value === undefined) {
+    return NOTHING;
+  }
+
+  const sign = value > 0 ? "+" : value < 0 ? "−" : "";
+
+  return `${sign}${formatNumber(Math.abs(value), places)}`;
+}
+
+export function formatKilometres(metres: number | null | undefined, places = 1): string {
+  if (metres === null || metres === undefined) {
+    return NOTHING;
+  }
+
+  return formatNumber(metres / METRES_PER_KILOMETRE, places);
+}
+
+/**
+ * Minutes per kilometre, the unit a run is read in.
+ *
+ * Derived from duration and distance rather than from Garmin's speed field, so that the
+ * pace on screen always agrees with the two numbers beside it.
+ */
+export function formatPace(
+  durationMinutes: number | null | undefined,
+  distanceMetres: number | null | undefined,
+): string {
+  const minutesPerKilometre = paceMinutesPerKilometre(durationMinutes, distanceMetres);
+
+  if (minutesPerKilometre === null) {
+    return NOTHING;
+  }
+
+  const wholeMinutes = Math.floor(minutesPerKilometre);
+  const seconds = Math.round((minutesPerKilometre - wholeMinutes) * SECONDS_PER_MINUTE);
+
+  return `${wholeMinutes}:${String(seconds).padStart(2, "0")}`;
+}
+
+/** The pace as a number, for a chart. Null when there was no distance. */
+export function paceMinutesPerKilometre(
+  durationMinutes: number | null | undefined,
+  distanceMetres: number | null | undefined,
+): number | null {
+  if (durationMinutes === null || durationMinutes === undefined) {
+    return null;
+  }
+
+  if (distanceMetres === null || distanceMetres === undefined || distanceMetres <= 0) {
+    return null;
+  }
+
+  return durationMinutes / (distanceMetres / METRES_PER_KILOMETRE);
+}
+
 /** "2026-09-14" -> "Mon 14 Sep". Parsed as local, not UTC -- see below. */
 export function formatDay(isoDay: string): string {
   const date = parseIsoDay(isoDay);
@@ -54,6 +115,21 @@ export function formatShortDay(isoDay: string): string {
   });
 }
 
+/** "2026-09-14T18:30:00" -> "18:30". */
+export function formatClock(isoDateTime: string | null): string {
+  if (isoDateTime === null) {
+    return NOTHING;
+  }
+
+  const timePart = isoDateTime.split("T")[1];
+
+  if (timePart === undefined) {
+    return NOTHING;
+  }
+
+  return timePart.slice(0, 5);
+}
+
 /**
  * Parse "2026-09-14" as a LOCAL date.
  *
@@ -67,10 +143,38 @@ export function parseIsoDay(isoDay: string): Date {
   return new Date(year, month - 1, day);
 }
 
+/** A local Date back to "2026-09-14". */
+export function toIsoDay(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+}
+
 /** Whole days between two ISO dates. */
 export function daysBetween(fromIsoDay: string, toIsoDay: string): number {
   const millisecondsPerDay = 24 * 60 * 60 * 1000;
   const difference = parseIsoDay(toIsoDay).getTime() - parseIsoDay(fromIsoDay).getTime();
 
   return Math.round(difference / millisecondsPerDay);
+}
+
+/** Garmin's type keys, as words. Anything unknown is shown as it came. */
+export function formatActivityType(typeKey: string | null): string {
+  if (typeKey === null) {
+    return "workout";
+  }
+
+  const names: Record<string, string> = {
+    strength_training: "Strength",
+    running: "Run",
+    treadmill_running: "Treadmill run",
+    indoor_cardio: "Indoor cardio",
+    walking: "Walk",
+    cycling: "Ride",
+    indoor_cycling: "Indoor ride",
+  };
+
+  return names[typeKey] ?? typeKey.replaceAll("_", " ");
 }

@@ -19,6 +19,7 @@ import json
 
 from backend.api import dashboard_json
 from backend.body import weight
+from backend.food import intake
 from backend.food import log
 from backend.garmin import normalize
 
@@ -96,9 +97,10 @@ def test_every_block_is_present_even_on_a_day_with_nothing_in_it() -> None:
     for block_name in ("energy", "sleep", "recovery", "body", "activities"):
         assert block_name in day, f"{block_name} missing from an empty day"
 
-    # These two are nullable blocks rather than always-objects, which is itself contract.
+    # These three are nullable blocks rather than always-objects, which is itself contract.
     assert day["weight"] is None
     assert day["food"] is None
+    assert day["intake"] is None
     assert day["activities"] == []
 
 
@@ -165,6 +167,7 @@ def test_the_contract_spells_out_every_key_it_promises() -> None:
         "body",
         "weight",
         "food",
+        "intake",
         "activities",
         "fields_found",
     }
@@ -304,6 +307,42 @@ def test_an_entry_carries_its_own_macros_and_its_basis() -> None:
     assert entry["serving_basis"] == "as_sold"
     assert entry["kilocalories"] == 120.0
     assert entry["logged_at"] == "2026-09-14T16:07:40"
+
+
+# ---------------------------------------------------------------------------
+# Intake -- the one block that can carry an assumption, so the label is the contract
+# ---------------------------------------------------------------------------
+
+
+def test_intake_sends_its_source_and_the_day_it_came_from() -> None:
+    """A carried figure must cross the wire saying so. Without the label it is a lie."""
+    carried = intake.DailyIntake(
+        kilocalories=2078.0,
+        source=intake.SOURCE_CARRIED,
+        from_day=datetime.date(2026, 9, 12),
+    )
+
+    day = dashboard_json.day_to_json(a_full_snapshot(), daily_intake=carried)
+
+    assert day["intake"] == {
+        "kilocalories": 2078.0,
+        "source": "carried",
+        "from_day": "2026-09-12",
+    }
+
+
+def test_intake_is_separate_from_the_food_log() -> None:
+    """The log is what was eaten item by item; intake is the one number the day is scored on."""
+    typed = intake.DailyIntake(2600.0, intake.SOURCE_MANUAL, DAY)
+
+    day = dashboard_json.day_to_json(
+        a_full_snapshot(),
+        food_entries=[a_logged_food(120.0, 24.0)],
+        daily_intake=typed,
+    )
+
+    assert day["food"]["totals"]["kilocalories"] == 120.0
+    assert day["intake"]["kilocalories"] == 2600.0
 
 
 # ---------------------------------------------------------------------------

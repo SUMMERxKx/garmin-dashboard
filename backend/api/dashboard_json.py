@@ -28,9 +28,15 @@ and one day looks like this, with every key always present:
       "body":       { garmin_weight_kilograms },
       "weight":     { kilograms, recorded_at, source }   or null
       "food":       { totals: {...}, entries: [...] }    or null
+      "intake":     { kilocalories, source, from_day }   or null
       "activities": [ ...one entry per workout, empty on a rest day... ],
       "fields_found": 24
     }
+
+Beside the days, the envelope carries the things that are not daily readings: the newest
+DEXA scan, the macro target in force, the profile, and a `baselines` block -- for each
+metric, its 7-day and 30-day normal and where the latest reading sits against the
+30-day one. Those are computed by the engine and sent finished; see rule 6.
 
 The five rules this format follows
 =================================
@@ -67,6 +73,12 @@ was eaten. Sending zeroes would put 29 days of "0 kcal" on a chart next to one r
 and make the average meaningless. Same for `weight`: null means no weigh-in that
 morning, and the dashboard decides how to draw the gap.
 
+**6. The browser never computes a judgement.**
+`intake.source` says whether a day's figure was typed in, added up from the log, or
+carried forward from an earlier day; `baselines` says what normal looks like and whether
+today departs from it. Both are decided in Python, where the rule is written down and
+tested, and sent as finished facts. The dashboard colours them; it does not decide them.
+
 Why a schema version
 ====================
 The browser and this file will drift -- one gets deployed without the other eventually.
@@ -81,6 +93,9 @@ from typing import Any
 
 from backend.body import dexa
 from backend.body import weight
+from backend.engine import baselines
+from backend.engine import report
+from backend.food import intake
 from backend.food import library
 from backend.food import log
 from backend.garmin import normalize
@@ -236,16 +251,40 @@ def food_to_json(entries: list[log.LoggedFood]) -> dict[str, Any] | None:
     }
 
 
+def intake_to_json(daily_intake: intake.DailyIntake | None) -> dict[str, Any] | None:
+    """The day's calorie figure and where it came from, or null if nothing is known yet.
+
+    This is the block the energy panel reads for "in". It is separate from `food`
+    because it answers a different question: `food` is the itemised log for the day, and
+    `intake` is the one number the day is scored on -- which might be a typed total, the
+    log's sum, or a figure carried forward from the last day that had one. The `source`
+    field says which, and the dashboard draws each differently. Sending the number without
+    the source would present an assumption as a measurement.
+    """
+    if daily_intake is None:
+        return None
+
+    return {
+        "kilocalories": daily_intake.kilocalories,
+        "source": daily_intake.source,
+        "from_day": daily_intake.from_day.isoformat(),
+    }
+
+
 def day_to_json(
     snapshot: normalize.DailySnapshot,
     weighing: weight.Weighing | None = None,
     food_entries: list[log.LoggedFood] | None = None,
+    daily_intake: intake.DailyIntake | None = None,
 ) -> dict[str, Any]:
     """Everything known about one day, in one object.
 
     Garmin's day, the morning weigh-in and the food log arrive together because that is
     how they are stored -- one lookup by day prefix returns all three. The dashboard
     should not have to make three requests to draw one row.
+
+    `daily_intake` is passed in already resolved rather than worked out here, because the
+    carry-forward rule needs to see the whole span and this function only sees one day.
     """
     if food_entries is None:
         food_entries = []
@@ -258,6 +297,7 @@ def day_to_json(
         "body": body_to_json(snapshot.body),
         "weight": weighing_to_json(weighing),
         "food": food_to_json(food_entries),
+        "intake": intake_to_json(daily_intake),
         "activities": [activity_to_json(one) for one in snapshot.activities],
         # How many Garmin fields this day actually has values for. The dashboard can use
         # it to mark a day as thin rather than drawing a gap as though it were a reading.
@@ -324,12 +364,66 @@ def profile_to_json(height_centimetres: float | None, birth_date: str | None) ->
     }
 
 
+def baseline_to_json(one_baseline: baselines.Baseline | None) -> dict[str, Any] | None:
+    """One window's normal, or null when there were not enough readings to build one.
+
+    The sample size travels with the mean so the dashboard can say "18 of 30 days" next
+    to it. A mean with no count beside it looks equally trustworthy however it was built.
+    """
+    if one_baseline is None:
+        return None
+
+    return {
+        "window_days": one_baseline.window_days,
+        "mean": one_baseline.mean,
+        "standard_deviation": one_baseline.standard_deviation,
+        "sample_size": one_baseline.sample_size,
+        "oldest_day": one_baseline.oldest_day.isoformat(),
+        "newest_day": one_baseline.newest_day.isoformat(),
+    }
+
+
+def metric_summary_to_json(summary: report.MetricSummary) -> dict[str, Any]:
+    """Both windows and the latest reading's position, for one metric."""
+    return {
+        "latest_day": date_or_none(summary.latest_day),
+        "latest_value": summary.latest_value,
+        "window_7": baseline_to_json(summary.short_window),
+        "window_30": baseline_to_json(summary.long_window),
+        # Positional only: "above", "below", "typical" or null. Which of those is good
+        # news depends on the metric, and the dashboard knows which metric it is drawing.
+        "position_vs_30": summary.position_against_long_window,
+    }
+
+
+def baselines_to_json(
+    summaries: dict[str, report.MetricSummary],
+    as_of: datetime.date | None,
+) -> dict[str, Any]:
+    """The baselines block: every metric's normal, and the day the windows end on.
+
+    `as_of` is sent because "your 7-day normal" means nothing without knowing which
+    seven days. It is the last day with Garmin data, not today -- see
+    `report.last_day_with_garmin_data`.
+    """
+    metrics = {}
+
+    for metric_name, summary in summaries.items():
+        metrics[metric_name] = metric_summary_to_json(summary)
+
+    return {
+        "as_of": date_or_none(as_of),
+        "metrics": metrics,
+    }
+
+
 def span_to_json(
     days: list[dict[str, Any]],
     generated_at: datetime.datetime,
     latest_scan: dict[str, Any] | None = None,
     macro_target: dict[str, Any] | None = None,
     profile: dict[str, Any] | None = None,
+    baselines_block: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Wrap the days in the envelope the dashboard actually fetches.
 
@@ -348,5 +442,7 @@ def span_to_json(
         "latest_scan": latest_scan,
         "macro_target": macro_target,
         "profile": profile,
+        # Computed by the engine over the whole span, so it belongs to the span.
+        "baselines": baselines_block,
         "days": days,
     }

@@ -1,106 +1,90 @@
-import { useEffect, useState } from "react";
-import Petals from "@/components/ui/petals";
-import { ProfileCard } from "@/components/panels/profile";
-import { StatsGrid } from "@/components/panels/stats";
-import { BodyCard, EnergyCard } from "@/components/panels/side";
+import { useCallback, useEffect, useState } from "react";
+import { Sidebar } from "@/components/nav/sidebar";
+import { ActivityPage } from "@/components/pages/activity";
+import { BodyPage } from "@/components/pages/body";
+import { EnergyPage } from "@/components/pages/energy";
+import { LogPage } from "@/components/pages/log";
+import { OverviewPage } from "@/components/pages/overview";
+import { RecoveryPage } from "@/components/pages/recovery";
 import { loadDays } from "@/data/loadDays";
-import type { DaysPayload } from "@/data/types";
-import { formatDay } from "@/lib/format";
+import type { DataSource, DaysPayload } from "@/data/types";
+import { usePage } from "@/lib/router";
 
 /**
- * The page.
+ * The shell: a rail of pages on the left, one page on the right.
  *
  * LAYOUT
  * ------
- * A single column on a phone. From `xl` up it becomes a wide main column plus a narrow
- * rail holding nutrition and the daily body log -- the two things you TYPE IN rather
- * than read off the watch, which is why they sit together and stay reachable.
+ * From `lg` up the rail is a fixed 14-rem column and the page scrolls beside it. Below
+ * that the rail becomes a strip of tabs across the top and everything stacks. Nothing is
+ * hidden at small widths -- a dashboard that drops panels on a phone is one you stop
+ * trusting, because you can never be sure what you are not being shown.
  *
- * Nothing is hidden at small widths. A dashboard that drops panels on mobile is one you
- * stop trusting, because you can never be sure what you are not being shown.
- *
- * Every headline number is sized with `clamp()` against the viewport, so the same page
- * is legible held in one hand and thrown at a projector. The palette is high-contrast
- * for the same reason: projectors wash out mid-tones and grey-on-grey disappears.
+ * WHY IT SCROLLS SMOOTHLY NOW
+ * ---------------------------
+ * The background is a still image painted once by CSS. The old one was a Canvas
+ * animation redrawing blurred shapes every frame behind panels with `backdrop-blur`, so
+ * every scroll tick re-composited the entire viewport. There is nothing left here that
+ * costs anything per frame.
  */
 export default function App() {
   const [payload, setPayload] = useState<DaysPayload | null>(null);
+  const [source, setSource] = useState<DataSource | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [page] = usePage();
 
-  useEffect(() => {
-    loadDays()
-      .then(setPayload)
-      .catch((error: Error) => setProblem(error.message));
+  // Fetch, then store. Returned as a promise so the Log page can wait for the fresh
+  // payload after a write before it clears its form.
+  const reload = useCallback((): Promise<void> => {
+    return loadDays()
+      .then((loaded) => {
+        setPayload(loaded.payload);
+        setSource(loaded.source);
+        setProblem(null);
+      })
+      .catch((error: Error) => {
+        setProblem(error.message);
+      });
   }, []);
 
+  useEffect(() => {
+    reload();
+  }, [reload]);
+
   return (
-    <div className="relative min-h-screen w-full bg-night-900 text-blossom-100">
-      {/* Petals drift behind everything. Held back with a scrim so the numbers in front
-          stay the thing you look at -- atmosphere, not subject. */}
-      <div className="pointer-events-none fixed inset-0 z-0 [transform:translateZ(0)] [will-change:transform]">
-        <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_15%_0%,var(--color-night-800),var(--color-night-900)_58%)]" />
-        <Petals className="size-full" />
-        <div className="absolute inset-0 bg-night-900/25" />
-      </div>
+    <div className="relative min-h-screen w-full text-hull-100">
+      <div className="starfield pointer-events-none fixed inset-0 z-0" aria-hidden="true" />
 
-      <main className="relative z-10 mx-auto w-full max-w-[1700px] px-4 py-6 sm:px-6 lg:px-8 lg:py-10">
-        <PageHeader payload={payload} problem={problem} />
+      <div className="relative z-10 flex min-h-screen flex-col lg:flex-row">
+        <Sidebar page={page} payload={payload} source={source} />
 
-        {payload !== null && (
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_22rem] xl:gap-5">
-            <div className="flex flex-col gap-4 xl:gap-5">
-              <ProfileCard payload={payload} />
-              <StatsGrid payload={payload} />
-            </div>
+        <main className="min-w-0 flex-1 px-4 py-5 sm:px-6 lg:px-8 lg:py-7">
+          <div className="mx-auto w-full max-w-[1500px]">
+            {problem !== null && (
+              <p className="mb-4 border border-plume-400/50 bg-plume-400/10 px-4 py-3 font-mono text-xs text-hull-100">{problem}</p>
+            )}
 
-            <aside className="flex flex-col gap-4 xl:gap-5">
-              <EnergyCard payload={payload} />
-              <BodyCard payload={payload} />
-            </aside>
+            {payload === null && problem === null && (
+              <p className="font-mono text-xs text-hull-400">acquiring signal…</p>
+            )}
+
+            {payload !== null && payload.days.length === 0 && (
+              <p className="font-mono text-xs text-hull-400">No days yet. Fetch and import some, then reload.</p>
+            )}
+
+            {payload !== null && payload.days.length > 0 && source !== null && (
+              <>
+                {page === "overview" && <OverviewPage payload={payload} />}
+                {page === "energy" && <EnergyPage payload={payload} />}
+                {page === "recovery" && <RecoveryPage payload={payload} />}
+                {page === "activity" && <ActivityPage payload={payload} />}
+                {page === "body" && <BodyPage payload={payload} />}
+                {page === "log" && <LogPage payload={payload} source={source} onSaved={reload} />}
+              </>
+            )}
           </div>
-        )}
-      </main>
-    </div>
-  );
-}
-
-function PageHeader({
-  payload,
-  problem,
-}: {
-  payload: DaysPayload | null;
-  problem: string | null;
-}) {
-  const lastDay = payload?.days[payload.days.length - 1];
-
-  return (
-    <header className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-2 lg:mb-7">
-      <div>
-        <h1 className="text-[clamp(1.6rem,1.2rem+1.6vw,2.5rem)] font-bold leading-none tracking-tight text-white">
-          Overview
-        </h1>
-        {payload !== null && (
-          <p className="tabular mt-1.5 text-xs text-blossom-100/45">
-            {payload.days.length} days · {payload.first_day} → {payload.last_day}
-          </p>
-        )}
+        </main>
       </div>
-
-      {lastDay !== undefined && (
-        <p className="text-xs font-medium text-blossom-100/45">
-          through {formatDay(lastDay.day)}
-        </p>
-      )}
-
-      {problem !== null && (
-        <p className="w-full rounded-2xl border border-blossom-500/40 bg-blossom-600/12 px-4 py-3 text-xs font-medium text-blossom-200">
-          {problem}
-        </p>
-      )}
-
-      {problem === null && payload === null && (
-        <p className="w-full text-xs text-blossom-100/45">loading…</p>
-      )}
-    </header>
+    </div>
   );
 }

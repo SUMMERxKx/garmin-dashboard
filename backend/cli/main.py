@@ -13,14 +13,15 @@ Where the work actually happens:
     formatting.py      how a number becomes text
     day_view.py        `today`
     data_commands.py   `import`, `days`
-    food_commands.py   `foods`, `log`, `meal`, `template`, `copy-yesterday`
+    food_commands.py   `foods`, `log`, `meal`, `template`, `copy-yesterday`, `ate`
     body_commands.py   `weigh`, `weights`, `body`
 
 Why a CLI still exists at all
 -----------------------------
-The dashboard is the interface now, but it can only READ: it fetches a JSON file and
-draws it. Until there is an API that accepts a write, these commands are the only way to
-record a weigh-in or log a meal, and deleting them would mean no data going in at all.
+The dashboard is the interface now, and its Log page can record a weigh-in or a day's
+calories when the API is running. These commands do the same things without a browser or
+a server, and they are still the only way to log food item by item. Both routes call the
+same modules, so a number recorded either way is checked the same way.
 """
 
 from __future__ import annotations
@@ -119,6 +120,14 @@ def build_argument_parser() -> argparse.ArgumentParser:
         help="the day to log it against, as YYYY-MM-DD (default: today)",
     )
 
+    ate_command = subcommands.add_parser(
+        "ate",
+        help="record a whole day's calories as one number, e.g. ate 2100",
+    )
+    ate_command.add_argument("kilocalories", type=float, help="the day's total, e.g. 2100")
+    ate_command.add_argument("--date", help="the day it belongs to (default: today)")
+    ate_command.add_argument("--note", help="why it was typed rather than logged, if you like")
+
     meal_command = subcommands.add_parser(
         "meal",
         help="log one saved meal, e.g. morning",
@@ -214,6 +223,9 @@ def main() -> int:
 
     if arguments.command == "log":
         return food_commands.run_log(arguments.food_id, arguments.servings, arguments.date)
+
+    if arguments.command == "ate":
+        return food_commands.run_ate(arguments.kilocalories, arguments.date, arguments.note)
 
     if arguments.command == "meal":
         return food_commands.run_meal(arguments.meal_id, arguments.date, arguments.set_servings)

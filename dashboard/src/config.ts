@@ -1,22 +1,12 @@
 /**
  * The handful of things that are yours rather than the data's.
  *
- * Kept in one file so changing your name, your goals or your avatar never means reading
- * a component. Everything else on the dashboard comes from the export.
+ * Kept in one file so changing your name or your goals never means reading a component.
+ * Everything else on the dashboard comes from the payload.
  */
 
-/** Shown on the profile card. */
+/** Shown in the sidebar. */
 export const DISPLAY_NAME = "Summer";
-
-/**
- * Your photo. Drop a file at `dashboard/public/avatar.png` and it appears; until then
- * the card draws a pixel-art placeholder.
- *
- * A small image is best -- it is rendered with `image-rendering: pixelated`, so a 32px
- * or 64px source blown up gives the intended look. A full-resolution photo will just
- * look like a photo.
- */
-export const AVATAR_URL = "/avatar.png";
 
 /**
  * Goals with no source in the data.

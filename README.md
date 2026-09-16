@@ -11,8 +11,9 @@ heart rate stays high between sets without the oxygen cost behind it. Compare wh
 maintenance. Everything here exists to make that comparison possible and honest.
 
 > **Status.** The acquisition path, storage, the food and body logs, a tested baseline
-> engine, and a read-only dashboard are built and working. The API, the cloud, and the
-> energy-balance calculation that closes the loop are not. See [Roadmap](#roadmap).
+> engine, a local API that reads and writes, and a six-page dashboard are built and
+> working. The cloud, and the energy-balance calculation that closes the loop, are not.
+> See [Roadmap](#roadmap).
 
 ---
 
@@ -36,10 +37,16 @@ maintenance. Everything here exists to make that comparison possible and honest.
    store/                    SQLite, shaped exactly like the DynamoDB it will become
         │
         ▼
-   api/dashboard_json.py     the wire contract
+   engine/                   baselines: what is normal FOR YOU  (pure functions)
         │
         ▼
-   dashboard/                React, Vite, Tailwind — reads, does not judge
+   api/dashboard_json.py     the wire contract
+   api/payload.py            one function builds the payload …
+   api/export.py             … written to a file, or
+   api/server.py             … served by FastAPI, which also accepts the two manual entries
+        │
+        ▼
+   dashboard/                React, Vite, Tailwind — six pages; draws, does not judge
 ```
 
 **The property everything else rests on:** the raw response is saved *before* anything
@@ -54,12 +61,18 @@ disk. That is only possible because nothing ever writes back over the archive.
 ```bash
 python -m venv .venv && .venv/bin/pip install -e ".[garmin,cli,dev]"
 
+.venv/bin/pip install -e ".[api]"                        # FastAPI and uvicorn
+
 .venv/bin/python -m backend.garmin.run_fetch --days 30   # pull 30 days from Garmin
 .venv/bin/python -m backend.cli.main import              # interpret and store them
-.venv/bin/python -m backend.api.export                   # write the dashboard's JSON
 
-cd dashboard && npm install && npm run dev               # http://localhost:5173
+.venv/bin/uvicorn backend.api.server:app --port 8000     # terminal 1: the API
+cd dashboard && npm install && npm run dev               # terminal 2: http://localhost:5173
 ```
+
+Without the API running, the dashboard falls back to a file you write with
+`python -m backend.api.export`; the sidebar says which source it got, and the Log page
+disables its forms rather than pretending to save.
 
 The first fetch asks for your Garmin email, password and two-factor code, then saves a
 token bundle to `.garmin_tokens/` and stops asking. Run it in a real terminal — the
@@ -72,6 +85,7 @@ two-factor prompt needs a human.
 | `main.py today` | one day, laid out to read (defaults to *yesterday*) |
 | `main.py days --days 14` | one line per stored day, to see a span |
 | `main.py weigh 75.0` | record this morning's weigh-in |
+| `main.py ate 2100` | record the whole day's calories as one number |
 | `main.py log whey-protein 1` | log a food |
 | `main.py template normal-day` | log a whole day in one command |
 | `main.py body` | DEXA scan, and what has changed since |
@@ -79,7 +93,7 @@ two-factor prompt needs a human.
 ### Checks
 
 ```bash
-.venv/bin/python -m pytest          # 39 tests
+.venv/bin/python -m pytest          # 69 tests
 .venv/bin/python -m ruff check .
 cd dashboard && npm run build && npx oxlint src
 ```
@@ -94,15 +108,15 @@ backend/
   store/      one table, a partition key and a sort key — DynamoDB's shape on SQLite
   food/       the YAML food library and the day's log
   body/       weigh-ins and DEXA scans
-  engine/     baselines: what is normal FOR YOU (pure functions, no I/O)
-  api/        the wire contract, and the exporter that writes it
+  engine/     baselines: what is normal FOR YOU, and the report the dashboard reads
+  api/        the wire contract, the payload builder, the exporter, and the FastAPI server
   cli/        one module per group of commands; main.py is parser and dispatch only
   tests/
 
 dashboard/src/
-  data/       the contract mirrored in TypeScript, and the single fetch
-  lib/        formatting, and deriving series out of days
-  components/ ui/ primitives, panels/ the real screens
+  data/       the contract mirrored in TypeScript; the fetch (API, then file); the two writes
+  lib/        formatting, deriving series out of days, hash routing, the colour tokens
+  components/ nav/ the sidebar · ui/ panels, tiles, charts · pages/ the six screens
 ```
 
 ---
@@ -133,6 +147,17 @@ and means nothing.
 **The screen shows, it does not score.** There is no invented readiness number. Compressing
 HRV, resting heart rate and sleep into one figure would throw away the useful part —
 *which* signal moved — in exchange for false precision.
+
+**A day's calories may be assumed; a weight never is.** A day with nothing typed or
+logged is scored as the same as the last day that was — the diet genuinely is the same
+most days — but the figure crosses the wire as `source: "carried"` with the day it came
+from, and is drawn hollow and tagged *assumed*. The label is the whole licence for the
+rule. Weight gets no such rule, because an invented weigh-in would be indistinguishable
+from a real one afterwards and every later calculation would count it as "no change".
+
+**Judgements are made in Python and sent, never made in the browser.** "Below your
+30-day normal" is computed by the tested engine and arrives finished in a `baselines`
+block. The browser chooses a colour for it. It never chooses the word.
 
 **A missed morning stays missed.** Nothing carries a weight forward. A fabricated reading
 would be indistinguishable from a real one afterwards, and every later calculation would
@@ -168,11 +193,12 @@ Confirmed against 31 days of real responses, so nobody has to re-derive it:
 | ✅ | Fetch, archive, normalise, store |
 | ✅ | Food library, day log, weigh-ins, DEXA |
 | ✅ | Baseline engine, with tests |
-| ✅ | Read-only dashboard |
-| ◻️ | A write API, so the browser can log a weigh-in |
+| ✅ | Dashboard: six pages, every metric against its own baseline |
+| ✅ | A local write API — weigh-ins and a day's calories from the browser |
+| ✅ | Running: pace per run and kilometres per week |
+| ◻️ | Food logging item by item from the browser |
 | ◻️ | DynamoDB and a scheduled fetcher on AWS |
 | ◻️ | **Observed maintenance** — the calculation this is all for |
-| ◻️ | Running: pace progression and weekly mileage |
 
 Observed maintenance needs roughly four weeks of daily weigh-ins and daily food logs
 before it can say anything. That is a data problem, not a code problem, and the clock

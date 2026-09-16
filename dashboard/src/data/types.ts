@@ -128,6 +128,46 @@ export type Activity = {
   anaerobic_training_effect: number | null;
 };
 
+/**
+ * The one number a day's eating is scored on, and where it came from.
+ *
+ * `source` is the whole point of this block. "logged" is the food log's sum, "manual"
+ * is a total typed in as one number, and "carried" is a figure inherited from the last
+ * day that had one -- an assumption, not a measurement, and drawn differently for it.
+ * `from_day` is the day the figure was actually recorded on.
+ */
+export type Intake = {
+  kilocalories: number;
+  source: "logged" | "manual" | "carried";
+  from_day: string;
+};
+
+/** What normal looks like for one metric over one window, computed in Python. */
+export type Baseline = {
+  window_days: number;
+  mean: number;
+  standard_deviation: number;
+  sample_size: number;
+  oldest_day: string;
+  newest_day: string;
+};
+
+export type MetricSummary = {
+  latest_day: string | null;
+  latest_value: number | null;
+  /** Null when there were not enough readings to build one honestly. */
+  window_7: Baseline | null;
+  window_30: Baseline | null;
+  /** "above", "below", "typical" -- or null. Positional, never good or bad. */
+  position_vs_30: "above" | "below" | "typical" | null;
+};
+
+export type Baselines = {
+  /** The last day with Garmin data; every window ends here. */
+  as_of: string | null;
+  metrics: Record<string, MetricSummary>;
+};
+
 export type Day = {
   /** ISO date, "2026-09-14". */
   day: string;
@@ -139,6 +179,8 @@ export type Day = {
   weight: Weighing | null;
   /** Null means the log was not kept that day -- not that nothing was eaten. */
   food: Food | null;
+  /** The resolved calorie figure for the day. Null only before the first recorded day. */
+  intake: Intake | null;
   /** Empty on a rest day. */
   activities: Activity[];
   /** How many Garmin fields this day actually has values for. 0 means nothing fetched yet. */
@@ -155,5 +197,10 @@ export type DaysPayload = {
   /** The macro target in force on the last day of the span. */
   macro_target: MacroTarget | null;
   profile: Profile | null;
+  /** Personal baselines for every metric on the dashboard. Absent from older exports. */
+  baselines: Baselines | null;
   days: Day[];
 };
+
+/** Where the payload came from. The Log page can only write when it is the API. */
+export type DataSource = "api" | "file";

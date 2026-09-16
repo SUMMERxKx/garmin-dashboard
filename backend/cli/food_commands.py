@@ -11,10 +11,12 @@ import datetime
 
 from backend.cli import days
 from backend.cli import formatting
+from backend.food import intake
 from backend.food import library
 from backend.food import log
 from backend.store import database
 from backend.store import food_store
+from backend.store import intake_store
 
 
 def build_food_row(*cells: str) -> str:
@@ -395,3 +397,52 @@ def print_day_running_total(day: datetime.date, whole_library: library.Library) 
           f" {left.carbohydrate_grams:+.0f} C,"
           f" {left.fat_grams:+.0f} F")
     print()
+
+
+def run_ate(kilocalories: float, date_text: str | None, note: str | None) -> int:
+    """Record a day's calories as one typed number.
+
+    The quick route in, for the days the itemised log is not worth the trouble. It
+    overrides the food log for that day on the dashboard -- see `intake.py` for why --
+    and any day after it with nothing recorded inherits the figure, labelled as carried.
+    """
+    day = days.work_out_day_for_logging(date_text)
+
+    if day is None:
+        return 1
+
+    problem = intake.describe_problem(kilocalories)
+
+    if problem is not None:
+        print(problem)
+        return 1
+
+    open_database = database.Database()
+
+    already_there = intake_store.load_intake(open_database, day)
+
+    one_intake = intake.ManualIntake(
+        day=day,
+        kilocalories=kilocalories,
+        # The clock is read here, at the edge, never inside the intake module.
+        recorded_at=datetime.datetime.now(),
+        note=note,
+    )
+
+    intake_store.save_intake(open_database, one_intake)
+    open_database.close()
+
+    print()
+
+    if already_there is not None:
+        # A day holds one total, so this replaced something. Say so rather than letting
+        # a number quietly disappear.
+        print(f"  replaced {already_there.kilocalories:g} kcal with"
+              f" {kilocalories:g} kcal for {day.isoformat()}")
+    else:
+        print(f"  recorded {kilocalories:g} kcal for {day.isoformat()}")
+
+    print("  Days after this with nothing recorded will show this figure, marked as assumed.")
+    print()
+
+    return 0

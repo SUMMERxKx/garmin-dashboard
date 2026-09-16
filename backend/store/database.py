@@ -64,7 +64,13 @@ class Database:
         """
         self.database_path = str(database_path)
 
-        self.connection = sqlite3.connect(self.database_path)
+        # `check_same_thread=False` because the API server runs each request on a
+        # worker thread, and the dependency that opens this connection may run on a
+        # different one from the endpoint that uses it. sqlite3 refuses that by default
+        # as a guard against two threads using one connection AT THE SAME TIME, which
+        # never happens here: a connection is opened for one request and closed after
+        # it. The command line, single-threaded, is unaffected either way.
+        self.connection = sqlite3.connect(self.database_path, check_same_thread=False)
 
         # Hand back rows that can be read by column name -- row["body"] rather than
         # row[2]. Position-based access silently reads the wrong column the moment
