@@ -28,6 +28,11 @@ dashboard/public/data/
 # readings, only what the project is and how to run it.
 docs/
 
+# CDK build output: the synthesised CloudFormation templates and asset staging. Generated
+# by `cdk synth` and `cdk deploy` on every run, so it is never worth committing.
+infra/cdk.out/
+infra/cdk.context.json
+
 # Local database -- contains real health data
 garmin-dashboard.db
 *.db

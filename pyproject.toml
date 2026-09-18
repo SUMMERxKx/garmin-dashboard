@@ -44,6 +44,10 @@ packages = [
     "backend.body",
     "backend.engine",
     "backend.api",
+    # The CDK application. Listed so `import infra.stacks.data_stack` works from the
+    # tests, which synthesise the stack in memory and assert against the template.
+    "infra",
+    "infra.stacks",
 ]
 
 [tool.pytest.ini_options]
@@ -97,6 +101,11 @@ force-single-line = true
 # in a default is how an endpoint declares what it needs. It is the framework's idiom,
 # not the mistake the rule is looking for.
 "backend/api/server.py" = ["B008"]
+# E402 flags an import that is not at the top of the file. In the CDK entry point the
+# project root has to be put on `sys.path` BEFORE `from infra.stacks import ...`, because
+# the cdk command runs app.py directly from inside the infra directory, where the parent
+# package is not importable yet. The order is the point, so the rule is turned off here.
+"infra/app.py" = ["E402"]
 
 [tool.coverage.report]
 exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:"]
