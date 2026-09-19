@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import getpass
 import os
+from pathlib import Path
 from typing import Any
 
 from backend import paths
@@ -33,7 +34,13 @@ from backend import paths
 #: the cookie a website gives your browser after you sign in: proof that you already
 #: logged in, so you do not have to type a password again. This folder is gitignored,
 #: because anyone holding these tokens can read your Garmin data.
-TOKEN_DIRECTORY = paths.PROJECT_ROOT / ".garmin_tokens"
+#: Where the token bundle lives. Overridable through the environment because in Lambda
+#: the only writable place is `/tmp`, and the bundle is copied there out of Parameter
+#: Store at the start of each run. Everywhere else the default is right and nothing has
+#: to be set.
+TOKEN_DIRECTORY = Path(
+    os.environ.get("GARMIN_TOKEN_DIRECTORY", str(paths.PROJECT_ROOT / ".garmin_tokens"))
+)
 
 
 def ask_for_mfa_code() -> str:

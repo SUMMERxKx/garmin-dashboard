@@ -32,6 +32,7 @@ import datetime
 from backend.cli import body_commands
 from backend.cli import data_commands
 from backend.cli import day_view
+from backend.cli import days
 from backend.cli import food_commands
 
 
@@ -253,7 +254,7 @@ def main() -> int:
         if arguments.date is None:
             # No day named, so import everything already on disk. Re-importing is
             # harmless, and this is the command you want after improving the mapping.
-            return data_commands.run_import(data_commands.days_we_have_saved())
+            return data_commands.run_import(days.days_we_have_saved())
 
         try:
             return data_commands.run_import([datetime.date.fromisoformat(arguments.date)])

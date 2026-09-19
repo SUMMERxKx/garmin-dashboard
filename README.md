@@ -10,10 +10,10 @@ heart rate stays high between sets without the oxygen cost behind it. Compare wh
 *ate* against what your weight actually *did*, and the difference tells you your real
 maintenance. Everything here exists to make that comparison possible and honest.
 
-> **Status.** Running on AWS, behind a password: DynamoDB, S3, a Lambda API and a
-> CloudFront distribution, all described in `infra/` and deployed with one command. What
-> is left is the scheduled fetcher and the energy-balance calculation that closes the
-> loop. See [Roadmap](#roadmap).
+> **Status.** Running on AWS and fetching by itself: DynamoDB, S3, a Lambda API, a
+> scheduled Garmin fetcher, and a CloudFront distribution behind a login — all described
+> in `infra/` and deployed with one command. What is left is the energy-balance
+> calculation that closes the loop. See [Roadmap](#roadmap).
 
 ---
 
@@ -54,9 +54,12 @@ serves the built dashboard, so the browser talks to one origin and the front-end
 byte-identical to the one that runs against Vite's proxy on a laptop.
 
 ```
-  browser ──► CloudFront ──► basic_auth.js at the edge ──► 401, or onward
+  browser ──► CloudFront ──► session_gate.js at the edge ──► login page, or onward
                    ├── /api/*  ──► Lambda (FastAPI via mangum) ──► DynamoDB
                    └── /       ──► S3, private, read through an access control
+
+  EventBridge ──► fetcher Lambda ──► Garmin ──► S3 (raw) + DynamoDB (interpreted)
+       4x a day        logs in with a token, never a password
 ```
 
 **The property everything else rests on:** the raw response is saved *before* anything
@@ -103,7 +106,7 @@ two-factor prompt needs a human.
 ### Checks
 
 ```bash
-.venv/bin/python -m pytest          # 105 tests
+.venv/bin/python -m pytest          # 147 tests
 .venv/bin/python -m ruff check .
 cd dashboard && npm run build && npx oxlint src
 ```
@@ -170,6 +173,11 @@ from, and is drawn hollow and tagged *assumed*. The label is the whole licence f
 rule. Weight gets no such rule, because an invented weigh-in would be indistinguishable
 from a real one afterwards and every later calculation would count it as "no change".
 
+**The password is changed in AWS, not in the code.** It lives in Parameter Store,
+encrypted, and the stack deliberately does not manage it — a stack that owned that value
+would overwrite it on the next deploy. The session cookie carries its own signed expiry,
+so there is no session table anywhere and the check can happen at the edge.
+
 **Judgements are made in Python and sent, never made in the browser.** "Below your
 30-day normal" is computed by the tested engine and arrives finished in a `baselines`
 block. The browser chooses a colour for it. It never chooses the word.
@@ -212,9 +220,9 @@ Confirmed against 31 days of real responses, so nobody has to re-derive it:
 | ✅ | A local write API — weigh-ins and a day's calories from the browser |
 | ✅ | Running: pace per run and kilometres per week |
 | ✅ | DynamoDB, S3, a Lambda API and CloudFront — described in `infra/`, one command to deploy |
-| ✅ | Online behind a password, with the API unreachable except through the distribution |
+| ✅ | Online behind a login page, with the API unreachable except through the distribution |
+| ✅ | A scheduled fetcher, so new days arrive without the laptop |
 | ◻️ | A custom subdomain (certificate in us-east-1, two CNAMEs at the DNS host) |
-| ◻️ | A scheduled fetcher, so new days arrive without the laptop |
 | ◻️ | Food logging item by item from the browser |
 | ◻️ | **Observed maintenance** — the calculation this is all for |
 

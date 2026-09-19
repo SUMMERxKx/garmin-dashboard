@@ -38,16 +38,19 @@ from pathlib import Path
 
 from backend import paths
 
-#: Where the package is assembled. Gitignored -- it is build output, rebuilt every time.
-BUILD_DIRECTORY = paths.PROJECT_ROOT / "build" / "api"
+#: Where packages are assembled. Gitignored -- build output, rebuilt every time.
+BUILD_ROOT = paths.PROJECT_ROOT / "build"
 
-#: The libraries the API imports at runtime, pinned to no particular version because the
-#: venv's own resolution is the source of truth and this mirrors it.
-RUNTIME_LIBRARIES = [
-    "fastapi",
-    "mangum",
-    "pyyaml",
-]
+#: The two functions, and what each one imports at runtime.
+#:
+#: They are built separately rather than as one package that does both jobs. The API is
+#: called on every page load and wants the smallest possible cold start; the fetcher runs
+#: four times a day and drags in a compiled HTTP library that the API has no use for.
+#: Sharing one package would put that cost on every dashboard open.
+PACKAGES = {
+    "api": ["fastapi", "mangum", "pyyaml"],
+    "fetcher": ["garminconnect", "pyyaml"],
+}
 
 #: Lambda's Python. Must match the runtime declared in `infra/stacks/app_stack.py`, or
 #: the compiled parts of pydantic will be built for the wrong interpreter.
@@ -73,20 +76,20 @@ PERSONAL_FILES = [
 JUNK_PATTERNS = ["__pycache__", "*.dist-info", "*.pyc", "tests"]
 
 
-def empty_the_build_directory() -> None:
+def empty_the_build_directory(where: Path) -> None:
     """Start from nothing, so a removed dependency actually disappears.
 
     Building on top of a previous run would leave an old library in place after it was
     taken out of the list, and the package would keep working locally for reasons nobody
     could find.
     """
-    if BUILD_DIRECTORY.exists():
-        shutil.rmtree(BUILD_DIRECTORY)
+    if where.exists():
+        shutil.rmtree(where)
 
-    BUILD_DIRECTORY.mkdir(parents=True)
+    where.mkdir(parents=True)
 
 
-def install_the_libraries() -> None:
+def install_the_libraries(where: Path, libraries: list[str]) -> None:
     """Fetch Linux wheels for every runtime library into the build directory."""
     command = [
         sys.executable,
@@ -95,7 +98,7 @@ def install_the_libraries() -> None:
         "install",
         "--quiet",
         "--target",
-        str(BUILD_DIRECTORY),
+        str(where),
         "--platform",
         LAMBDA_PLATFORM,
         "--python-version",
@@ -103,17 +106,17 @@ def install_the_libraries() -> None:
         # Refuse to build anything from source. Building would produce macOS binaries,
         # which is exactly the silent failure this whole approach avoids.
         "--only-binary=:all:",
-        *RUNTIME_LIBRARIES,
+        *libraries,
     ]
 
-    print("  installing:", ", ".join(RUNTIME_LIBRARIES))
+    print("  installing:", ", ".join(libraries))
 
     subprocess.run(command, check=True)
 
 
-def copy_the_application() -> None:
+def copy_the_application(where: Path) -> None:
     """Copy the backend package in, minus the tests."""
-    destination = BUILD_DIRECTORY / "backend"
+    destination = where / "backend"
 
     shutil.copytree(
         paths.PROJECT_ROOT / "backend",
@@ -124,7 +127,7 @@ def copy_the_application() -> None:
     print("  copied: backend/")
 
 
-def copy_the_personal_files() -> None:
+def copy_the_personal_files(where: Path) -> None:
     """Copy the food library and the DEXA scans, if they exist on this machine.
 
     Missing is not an error. `read_fixed_facts` already handles their absence -- the
@@ -137,29 +140,29 @@ def copy_the_personal_files() -> None:
             print(f"  skipped (not on this machine): {relative_path}")
             continue
 
-        destination = BUILD_DIRECTORY / relative_path
+        destination = where / relative_path
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, destination)
 
         print(f"  copied: {relative_path}")
 
 
-def remove_the_junk() -> None:
+def remove_the_junk(where: Path) -> None:
     """Delete what will never be imported, to keep the upload small."""
     for pattern in JUNK_PATTERNS:
-        for found in BUILD_DIRECTORY.rglob(pattern):
+        for found in where.rglob(pattern):
             if found.is_dir():
                 shutil.rmtree(found, ignore_errors=True)
             else:
                 found.unlink(missing_ok=True)
 
 
-def measure() -> tuple[int, float]:
+def measure(where: Path) -> tuple[int, float]:
     """How many files the package holds, and how many megabytes."""
     total_files = 0
     total_bytes = 0
 
-    for one_file in BUILD_DIRECTORY.rglob("*"):
+    for one_file in where.rglob("*"):
         if one_file.is_file():
             total_files = total_files + 1
             total_bytes = total_bytes + one_file.stat().st_size
@@ -167,22 +170,31 @@ def measure() -> tuple[int, float]:
     return (total_files, total_bytes / (1024 * 1024))
 
 
+def build_one(name: str, libraries: list[str]) -> None:
+    """Assemble one package end to end."""
+    where = BUILD_ROOT / name
+
+    print()
+    print(f"Building the {name} package in {where}")
+
+    empty_the_build_directory(where)
+    install_the_libraries(where, libraries)
+    copy_the_application(where)
+    copy_the_personal_files(where)
+    remove_the_junk(where)
+
+    how_many_files, megabytes = measure(where)
+
+    print(f"  built: {how_many_files} files, {megabytes:.1f} MB unpacked")
+
+
 def main() -> int:
-    """Entry point. 0 if the package was built."""
-    print()
-    print(f"Building the API package in {BUILD_DIRECTORY}")
-
-    empty_the_build_directory()
-    install_the_libraries()
-    copy_the_application()
-    copy_the_personal_files()
-    remove_the_junk()
-
-    how_many_files, megabytes = measure()
+    """Entry point. 0 if both packages were built."""
+    for name, libraries in PACKAGES.items():
+        build_one(name, libraries)
 
     print()
-    print(f"Built: {how_many_files} files, {megabytes:.1f} MB unpacked")
-    print("Deploy it with:  cd infra && cdk deploy")
+    print("Deploy them with:  .venv/bin/python -m scripts.deploy")
     print()
 
     return 0

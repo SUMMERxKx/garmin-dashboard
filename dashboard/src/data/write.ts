@@ -76,6 +76,16 @@ async function post(
     };
   }
 
+  // Same reasoning as in loadDays: a lapsed session is not an error to report, it is a
+  // reason to sign in again. Done before reading the body, which for a 401 from the edge
+  // is a fixed sentence rather than anything worth showing.
+  if (response.status === 401) {
+    const next = encodeURIComponent(window.location.pathname + window.location.hash);
+    window.location.replace(`/login.html?next=${next}`);
+
+    return { ok: false, status: 401, message: "Signing in again…" };
+  }
+
   const responseBody = (await response.json().catch(() => ({}))) as Record<string, unknown>;
 
   if (!response.ok) {

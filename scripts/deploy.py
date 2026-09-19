@@ -39,27 +39,123 @@ from scripts import build_lambda
 #: Where the origin secret is written down. Gitignored, along with all of docs/.
 SECRETS_FILE = paths.PROJECT_ROOT / "docs" / "personal" / "dashboard-credentials.md"
 
-#: The variable the stack reads at synth time.
+#: The variables the stack reads at synth time, and the lines they are stored under in
+#: the secrets file.
 ORIGIN_SECRET_VARIABLE = "GARMIN_ORIGIN_SECRET"
+SESSION_SECRET_VARIABLE = "GARMIN_SESSION_SECRET"
+
+#: Where the session signing secret has to end up as well as in the Lambda: the edge
+#: verifies cookies with it. Matches `infra/stacks/app_stack.py`.
+SESSION_SECRET_KEY = "session-secret"
 
 #: Node versions the CDK supports. 25 is not one of them.
 SUPPORTED_NODE_MAJORS = [20, 22, 24]
 
 
-def read_origin_secret() -> str:
-    """Pull the shared secret out of the local secrets file."""
+def read_secret(variable_name: str) -> str:
+    """Pull one secret out of the local secrets file, creating it if it is not there yet.
+
+    Generating a missing secret rather than failing means a fresh clone can deploy, and
+    keeping it in the file rather than regenerating each time means a deploy does not sign
+    everybody out.
+    """
     if not SECRETS_FILE.exists():
-        raise SystemExit(
-            f"{SECRETS_FILE} is missing.\n"
-            f"It holds {ORIGIN_SECRET_VARIABLE}, the secret CloudFront sends to the API."
-        )
+        SECRETS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        SECRETS_FILE.write_text("# Dashboard secrets. Gitignored.\n")
 
-    found = re.search(rf"{ORIGIN_SECRET_VARIABLE}=(\S+)", SECRETS_FILE.read_text())
+    text = SECRETS_FILE.read_text()
+    found = re.search(rf"{variable_name}=(\S+)", text)
 
-    if found is None:
-        raise SystemExit(f"No {ORIGIN_SECRET_VARIABLE}=... line in {SECRETS_FILE}.")
+    if found is not None:
+        return found.group(1)
 
-    return found.group(1)
+    from backend.api import auth
+
+    made = auth.random_secret()
+    SECRETS_FILE.write_text(text.rstrip("\n") + f"\n\n    {variable_name}={made}\n")
+    print(f"  generated a new {variable_name} and saved it to {SECRETS_FILE.name}")
+
+    return made
+
+
+def ensure_login_password() -> None:
+    """Make sure there is a password in Parameter Store, without ever overwriting one.
+
+    The password is the value meant to be changed by hand in the AWS console, so this
+    only ever creates it. If one is already there it is left completely alone -- which is
+    what lets you change it there and redeploy without losing the change.
+    """
+    import boto3
+
+    from backend.api import auth
+
+    client = boto3.client("ssm")
+
+    try:
+        client.get_parameter(Name=auth.PASSWORD_PARAMETER_NAME)
+        print("  login password already set (left untouched)")
+        return
+    except client.exceptions.ParameterNotFound:
+        pass
+
+    chosen = auth.random_password()
+
+    client.put_parameter(
+        Name=auth.PASSWORD_PARAMETER_NAME,
+        Value=chosen,
+        Type="SecureString",
+        Description="The dashboard login password. Change it here; no deploy needed.",
+    )
+
+    text = SECRETS_FILE.read_text().rstrip("\n")
+    SECRETS_FILE.write_text(
+        text + f"\n\n## Login password\n\n    Password: {chosen}\n\n"
+        f"Change it in the AWS console: Systems Manager -> Parameter Store ->\n"
+        f"`{auth.PASSWORD_PARAMETER_NAME}`. It takes effect within a minute, no deploy.\n"
+    )
+
+    print(f"  created the login password at {auth.PASSWORD_PARAMETER_NAME}")
+    print(f"  written down in {SECRETS_FILE.name}")
+
+
+def write_session_secret_to_the_edge(session_secret: str) -> None:
+    """Put the signing secret in the KeyValueStore the edge function reads.
+
+    Done after the deploy rather than in the stack, so the value never lands in a
+    CloudFormation template. Needs `botocore[crt]`: the KeyValueStore API is signed with
+    SigV4a, which plain botocore cannot do, and the failure without it looks like a DNS
+    problem rather than a missing dependency.
+    """
+    import boto3
+
+    outputs = subprocess.run(
+        [
+            "aws", "cloudformation", "describe-stacks",
+            "--stack-name", "HealthDashboardApp",
+            "--query", "Stacks[0].Outputs[?OutputKey=='CredentialStoreArn'].OutputValue",
+            "--output", "text",
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    store_arn = outputs.stdout.strip()
+
+    if store_arn == "" or store_arn == "None":
+        raise SystemExit("Could not find the KeyValueStore ARN in the stack outputs.")
+
+    client = boto3.client("cloudfront-keyvaluestore", region_name="us-east-1")
+    etag = client.describe_key_value_store(KvsARN=store_arn)["ETag"]
+
+    client.put_key(
+        KvsARN=store_arn,
+        Key=SESSION_SECRET_KEY,
+        Value=session_secret,
+        IfMatch=etag,
+    )
+
+    print("  session signing secret written to the edge")
 
 
 def check_node_version() -> None:
@@ -97,13 +193,14 @@ def build_the_dashboard() -> None:
     )
 
 
-def deploy(origin_secret: str) -> None:
-    """`cdk deploy`, with the secret in the environment the stack reads."""
+def deploy(origin_secret: str, session_secret: str) -> None:
+    """`cdk deploy`, with the secrets in the environment the stack reads."""
     print()
     print("Deploying…")
 
     environment = dict(os.environ)
     environment[ORIGIN_SECRET_VARIABLE] = origin_secret
+    environment[SESSION_SECRET_VARIABLE] = session_secret
 
     subprocess.run(
         ["cdk", "deploy", "--all", "--require-approval", "never"],
@@ -119,15 +216,21 @@ def main() -> int:
     print("Checks:")
     check_node_version()
 
-    origin_secret = read_origin_secret()
-    print(f"  origin secret read from {SECRETS_FILE.name}")
+    origin_secret = read_secret(ORIGIN_SECRET_VARIABLE)
+    session_secret = read_secret(SESSION_SECRET_VARIABLE)
+    print(f"  secrets read from {SECRETS_FILE.name}")
 
     build_the_dashboard()
 
     print()
     build_lambda.main()
 
-    deploy(origin_secret)
+    deploy(origin_secret, session_secret)
+
+    print()
+    print("Fitting the lock…")
+    write_session_secret_to_the_edge(session_secret)
+    ensure_login_password()
 
     print()
     print("Deployed.")

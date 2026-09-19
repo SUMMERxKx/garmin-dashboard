@@ -27,6 +27,8 @@ Reading and writing
     GET  /api/days?days=400     the whole payload, exactly as `export.py` writes it
     POST /api/intake            { day, kilocalories, note? }  a typed-in daily total
     POST /api/weigh             { day, kilograms, fat_percent?, force? }  a weigh-in
+    POST /api/login             { password }  sets the session cookie
+    POST /api/logout            clears it
 
 The writes apply the same checks the command line does, from the same modules, and
 answer with the same sentences. A weigh-in that is far from the last one is refused
@@ -43,6 +45,7 @@ from typing import Any
 import fastapi
 import pydantic
 
+from backend.api import auth
 from backend.api import payload
 from backend.body import weight
 from backend.food import intake
@@ -215,3 +218,72 @@ def record_weighing(
         "replaced": None if already_there is None else already_there.kilograms,
         "change_since_previous": change,
     }
+
+
+
+# ---------------------------------------------------------------------------
+# Signing in
+# ---------------------------------------------------------------------------
+#
+# These two exist so the dashboard can have a login page of its own instead of the
+# browser's grey password box. The check that actually guards every request happens at the
+# CloudFront edge, in `infra/functions/session_gate.js`, which verifies the cookie this
+# endpoint mints. This is the only place a password is ever compared.
+
+
+class LoginRequest(pydantic.BaseModel):
+    """What the login page sends."""
+
+    password: str
+
+
+@app.post("/api/login")
+def log_in(request: LoginRequest) -> fastapi.Response:
+    """Check the password and, if it is right, set the session cookie.
+
+    The same answer for a wrong password and for no password at all, and no hint about
+    which part was wrong -- there is one account, so the only thing an error message can
+    do here is help somebody guessing.
+    """
+    try:
+        expected = auth.read_password()
+        secret = auth.signing_secret()
+    except auth.PasswordNotSet as problem:
+        # A deployment that is not finished, not a failed sign-in. Saying so plainly is
+        # the difference between a two-minute fix and an afternoon of guessing.
+        raise fastapi.HTTPException(status_code=503, detail=str(problem)) from problem
+
+    if not auth.password_matches(request.password, expected):
+        raise fastapi.HTTPException(status_code=401, detail="Wrong password.")
+
+    response = fastapi.Response(status_code=204)
+
+    response.set_cookie(
+        key=auth.COOKIE_NAME,
+        value=auth.mint_cookie(secret),
+        max_age=auth.SESSION_LENGTH_SECONDS,
+        # JavaScript on the page cannot read it, so a script injected into the page
+        # cannot steal it.
+        httponly=True,
+        # Never sent over plain HTTP.
+        secure=True,
+        # Not sent on requests started by another site, which is what stops a page you
+        # visit elsewhere from quietly calling this API as you.
+        samesite="lax",
+        path="/",
+    )
+
+    return response
+
+
+@app.post("/api/logout")
+def log_out() -> fastapi.Response:
+    """Clear the cookie.
+
+    Only ends THIS browser's session. Signing every device out at once means rotating the
+    signing secret, which is the emergency lever rather than the everyday one.
+    """
+    response = fastapi.Response(status_code=204)
+    response.delete_cookie(key=auth.COOKIE_NAME, path="/")
+
+    return response

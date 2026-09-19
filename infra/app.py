@@ -82,6 +82,7 @@ def build_app() -> aws_cdk.App:
         app,
         "HealthDashboardApp",
         table=storage.table,
+        raw_bucket=storage.raw_bucket,
         env=environment,
         description="The dashboard's API, website and the door in front of them.",
     )

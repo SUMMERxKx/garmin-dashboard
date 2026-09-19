@@ -59,6 +59,15 @@ async function tryFetch(url: string): Promise<DaysPayload | null> {
     return null;
   }
 
+  // A lapsed or missing session. The edge answers 401 rather than redirecting, because a
+  // redirect to an HTML page would arrive here as unparseable JSON. Send the browser to
+  // the login page, remembering where it was aiming.
+  if (response.status === 401) {
+    const next = encodeURIComponent(window.location.pathname + window.location.hash);
+    window.location.replace(`/login.html?next=${next}`);
+    return null;
+  }
+
   if (!response.ok) {
     return null;
   }

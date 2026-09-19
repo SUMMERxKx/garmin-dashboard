@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Telemetry · Sign in</title>
+
+    <!--
+      A standalone page, deliberately.
+
+      It could have been a route inside the React app, but then the whole bundle would
+      have to be readable by anyone who has not signed in yet — and the point of this
+      page is that nothing behind it is. Everything here is inline, so the only public
+      files are this one and the favicon.
+
+      It also means the sign-in screen loads in one request, before any JavaScript
+      framework exists, which is the right feel for a door.
+    -->
+    <style>
+      :root {
+        --hull-950: #07080a;
+        --hull-900: #0c0d10;
+        --hull-700: #1c1f25;
+        --hull-600: #262a31;
+        --hull-400: #5b616c;
+        --hull-300: #8b919c;
+        --hull-100: #e6e8eb;
+        --tele-400: #3d8ccc;
+        --plume-400: #cf6f25;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        background-color: var(--hull-950);
+        /* The same still starfield the dashboard uses, so the door belongs to the
+           building. Three gradients, painted once, nothing animated. */
+        background-image:
+          radial-gradient(1px 1px at 12% 18%, rgba(230,232,235,.55) 50%, transparent 51%),
+          radial-gradient(1px 1px at 68% 8%,  rgba(230,232,235,.45) 50%, transparent 51%),
+          radial-gradient(1.5px 1.5px at 84% 36%, rgba(230,232,235,.5) 50%, transparent 51%),
+          radial-gradient(1px 1px at 32% 62%, rgba(230,232,235,.35) 50%, transparent 51%),
+          radial-gradient(1px 1px at 52% 84%, rgba(230,232,235,.4) 50%, transparent 51%),
+          radial-gradient(1px 1px at 92% 72%, rgba(230,232,235,.45) 50%, transparent 51%),
+          linear-gradient(to right,  rgba(255,255,255,.025) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(255,255,255,.025) 1px, transparent 1px),
+          radial-gradient(120% 80% at 50% -10%, #12151b 0%, var(--hull-950) 60%);
+        background-size:
+          100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%,
+          64px 64px, 64px 64px, 100% 100%;
+        color: var(--hull-100);
+        font-family: "Barlow", ui-sans-serif, system-ui, -apple-system, sans-serif;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .panel {
+        width: 100%;
+        max-width: 380px;
+        border: 1px solid var(--hull-700);
+        background: var(--hull-900);
+        padding: 28px 26px 26px;
+      }
+
+      .eyebrow {
+        font-size: .66rem;
+        font-weight: 600;
+        letter-spacing: .16em;
+        text-transform: uppercase;
+        color: var(--tele-400);
+        margin: 0;
+      }
+
+      h1 {
+        margin: 6px 0 0;
+        font-size: 1.7rem;
+        font-weight: 600;
+        letter-spacing: -.01em;
+        line-height: 1;
+        color: #fff;
+      }
+
+      .blurb {
+        margin: 14px 0 22px;
+        font-size: .82rem;
+        line-height: 1.45;
+        color: var(--hull-300);
+      }
+
+      label {
+        display: block;
+        font-size: .66rem;
+        font-weight: 600;
+        letter-spacing: .16em;
+        text-transform: uppercase;
+        color: var(--hull-300);
+        margin-bottom: 7px;
+      }
+
+      input {
+        width: 100%;
+        border: 1px solid var(--hull-600);
+        background: var(--hull-950);
+        color: var(--hull-100);
+        padding: .7rem .75rem;
+        font: inherit;
+        outline: none;
+      }
+
+      input:focus { border-color: var(--tele-400); }
+
+      button {
+        width: 100%;
+        margin-top: 16px;
+        border: 1px solid var(--tele-400);
+        background: rgba(61,140,204,.15);
+        color: var(--hull-100);
+        padding: .72rem 1rem;
+        font: inherit;
+        font-weight: 500;
+        letter-spacing: .02em;
+        cursor: pointer;
+        transition: background-color .15s;
+      }
+
+      button:hover:not(:disabled) { background: rgba(61,140,204,.28); }
+      button:disabled { opacity: .45; cursor: not-allowed; }
+
+      .message {
+        margin-top: 16px;
+        padding-left: 11px;
+        border-left: 2px solid var(--plume-400);
+        font-size: .82rem;
+        line-height: 1.45;
+        color: var(--hull-100);
+      }
+
+      .message[hidden] { display: none; }
+
+      .footnote {
+        margin: 22px 0 0;
+        padding-top: 16px;
+        border-top: 1px solid var(--hull-700);
+        font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+        font-size: .62rem;
+        line-height: 1.5;
+        color: var(--hull-400);
+      }
+    </style>
+  </head>
+
+  <body>
+    <main class="panel">
+      <p class="eyebrow">Telemetry</p>
+      <h1>Sign in</h1>
+      <p class="blurb">
+        Personal health dashboard. One password, and it stays signed in on this device for
+        thirty days.
+      </p>
+
+      <form id="form" autocomplete="on">
+        <label for="password">Password</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autocomplete="current-password"
+          required
+          autofocus
+        />
+        <button id="submit" type="submit">Sign in</button>
+      </form>
+
+      <p class="message" id="message" hidden></p>
+
+      <p class="footnote">
+        Checked at the edge · session expires in 30 days
+      </p>
+    </main>
+
+    <script>
+      const form = document.getElementById("form");
+      const password = document.getElementById("password");
+      const submit = document.getElementById("submit");
+      const message = document.getElementById("message");
+
+      function say(text) {
+        message.textContent = text;
+        message.hidden = false;
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        message.hidden = true;
+        submit.disabled = true;
+        submit.textContent = "Checking…";
+
+        let response;
+
+        try {
+          response = await fetch("/api/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ password: password.value }),
+          });
+        } catch {
+          submit.disabled = false;
+          submit.textContent = "Sign in";
+          say("Could not reach the server. Check your connection and try again.");
+          return;
+        }
+
+        if (response.ok) {
+          // The cookie is set by the response. Where to go next is remembered in the
+          // query string by the edge function that sent us here, so a bookmark deep into
+          // the dashboard still lands where it was aimed.
+          const wanted = new URLSearchParams(window.location.search).get("next");
+          const safe = wanted && wanted.startsWith("/") && !wanted.startsWith("//");
+          window.location.replace(safe ? wanted : "/");
+          return;
+        }
+
+        submit.disabled = false;
+        submit.textContent = "Sign in";
+        password.value = "";
+        password.focus();
+
+        if (response.status === 401) {
+          say("That password is not right.");
+        } else if (response.status === 503) {
+          say("No password has been set for this deployment yet.");
+        } else {
+          say(`Something went wrong (HTTP ${response.status}).`);
+        }
+      });
+    </script>
+  </body>
+</html>

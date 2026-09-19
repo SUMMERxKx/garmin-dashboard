@@ -35,6 +35,9 @@ import aws_cdk
 from aws_cdk import aws_cloudfront
 from aws_cdk import aws_cloudfront_origins
 from aws_cdk import aws_dynamodb
+from aws_cdk import aws_events
+from aws_cdk import aws_events_targets
+from aws_cdk import aws_iam
 from aws_cdk import aws_lambda
 from aws_cdk import aws_s3
 from aws_cdk import aws_s3_deployment
@@ -46,8 +49,9 @@ INFRA_DIRECTORY = THIS_FILE.parent.parent
 PROJECT_ROOT = INFRA_DIRECTORY.parent
 
 #: Built by `scripts.build_lambda`, which fetches Linux wheels so nothing has to be
-#: compiled in a container. The deploy fails with a clear message if it is missing.
+#: compiled in a container. The deploy fails with a clear message if either is missing.
 LAMBDA_PACKAGE_DIRECTORY = PROJECT_ROOT / "build" / "api"
+FETCHER_PACKAGE_DIRECTORY = PROJECT_ROOT / "build" / "fetcher"
 
 #: Built by `npm run build` in `dashboard/`.
 WEBSITE_DIRECTORY = PROJECT_ROOT / "dashboard" / "dist"
@@ -67,8 +71,48 @@ LAMBDA_MEMORY_MEGABYTES = 512
 #: to bound a cold start plus a slow first call, not because the work is slow.
 LAMBDA_TIMEOUT_SECONDS = 30
 
-#: The key the Basic Auth credential is stored under, matching `basic_auth.js`.
-CREDENTIAL_KEY = "credential"
+#: Seventeen Garmin calls for each of three days, over somebody else's network. Nothing
+#: here is slow, but the whole thing is at the mercy of how fast Garmin answers, so the
+#: timeout is set by what is tolerable rather than by what is expected.
+FETCHER_TIMEOUT_SECONDS = 300
+
+#: Fetching is almost entirely waiting on the network, so more memory buys nothing.
+FETCHER_MEMORY_MEGABYTES = 512
+
+#: Four times a day, in UTC. In Vancouver that is roughly 06:00, 12:00, 18:00 and
+#: midnight, drifting an hour with daylight saving, which does not matter for a job whose
+#: whole purpose is to eventually notice a day the phone synced late.
+#:
+#: Four rather than more because Garmin only has what your watch last uploaded, which is
+#: itself only as often as your phone syncs. Asking more often returns the same answer
+#: and, on an unofficial API, is how accounts get blocked.
+FETCH_HOURS_UTC = "1,7,13,19"
+
+#: How many days back each run re-fetches, ending with yesterday. Re-fetching is free and
+#: repairs a day that was thin when it was first seen.
+FETCH_DAYS_BACK = 3
+
+#: Where the Garmin token bundle lives. Matches `backend/garmin/fetch_lambda.py`. Not
+#: created by this stack -- `scripts/upload_garmin_token.py` puts it there, because it
+#: comes from an interactive login on the laptop.
+TOKEN_PARAMETER_NAME = "/garmin-dashboard/garmin-tokens"
+
+#: The cookie the session lives in, matching `backend/api/auth.py` and `session_gate.js`.
+SESSION_COOKIE_NAME = "session"
+
+#: The key the session signing secret is stored under, matching `session_gate.js` and
+#: `backend/api/auth.py`. The API signs cookies with this value and the edge verifies them
+#: with it, so the two must hold exactly the same string.
+SESSION_SECRET_KEY = "session-secret"
+
+#: Read from the environment at synth time. `scripts/deploy.py` supplies it from the
+#: local secrets file and writes the same value into the KeyValueStore after deploying.
+SESSION_SECRET_VARIABLE = "GARMIN_SESSION_SECRET"
+
+#: Where the login password lives. Deliberately NOT created or written by this stack: it
+#: is the one value meant to be changed by hand in the AWS console, and a stack that
+#: managed it would overwrite that change on the next deploy.
+PASSWORD_PARAMETER_PATH = "/garmin-dashboard/*"
 
 #: The header CloudFront adds to every request it forwards to the API, matching
 #: `backend/api/lambda_handler.py`. CloudFront overwrites it, so a viewer cannot supply
@@ -80,20 +124,21 @@ ORIGIN_SECRET_HEADER = "x-origin-secret"
 ORIGIN_SECRET_VARIABLE = "GARMIN_ORIGIN_SECRET"
 
 
-def read_origin_secret() -> str:
-    """The shared secret between CloudFront and the function, from the environment.
+def read_secret(variable_name: str, used_for: str) -> str:
+    """A secret from the environment, with a useful error when it is missing.
 
     Deliberately not generated here. A value invented during synth would change on every
-    deploy, and CDK would rewrite both the distribution and the function each time for no
-    reason. Deliberately not written in this file either, because this file is public.
+    deploy, and CDK would rewrite the distribution and the function each time for no
+    reason -- and worse, a new signing secret would sign everybody out on every deploy.
+    Deliberately not written in this file either, because this file is public.
     """
-    secret = os.environ.get(ORIGIN_SECRET_VARIABLE, "").strip()
+    secret = os.environ.get(variable_name, "").strip()
 
     if secret == "":
         raise ValueError(
-            f"{ORIGIN_SECRET_VARIABLE} is not set. It is the shared secret between\n"
-            "CloudFront and the API function. Deploy with `scripts/deploy.py`, which\n"
-            "reads it from docs/personal/, or export it yourself."
+            f"{variable_name} is not set. It is used for {used_for}.\n"
+            "Deploy with `.venv/bin/python -m scripts.deploy`, which reads it from\n"
+            "docs/personal/, or export it yourself."
         )
 
     return secret
@@ -107,14 +152,18 @@ class AppStack(aws_cdk.Stack):
         scope: Construct,
         construct_id: str,
         table: aws_dynamodb.ITable,
+        raw_bucket: aws_s3.IBucket,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         self.table = table
-        self.origin_secret = read_origin_secret()
+        self.raw_bucket = raw_bucket
+        self.origin_secret = read_secret(ORIGIN_SECRET_VARIABLE, "CloudFront and the API")
+        self.session_secret = read_secret(SESSION_SECRET_VARIABLE, "signing session cookies")
 
         self.api_function = self.create_api_function()
+        self.fetcher = self.create_fetcher()
         self.api_url = self.create_function_url()
         self.website_bucket = self.create_website_bucket()
         self.credential_store = self.create_credential_store()
@@ -158,6 +207,9 @@ class AppStack(aws_cdk.Stack):
                 # What the function requires every caller to present. Only CloudFront
                 # knows it, because only CloudFront is configured to send it.
                 ORIGIN_SECRET_VARIABLE: self.origin_secret,
+                # What it signs session cookies with. The edge verifies them with the
+                # same value, read from the KeyValueStore.
+                SESSION_SECRET_VARIABLE: self.session_secret,
             },
             description="The dashboard's read and write API.",
         )
@@ -168,6 +220,93 @@ class AppStack(aws_cdk.Stack):
         # than attaching a written-out policy means the permissions cannot drift from the
         # thing they describe.
         self.table.grant_read_write_data(function)
+
+        # Read the login password, and only that path. The parameter itself is not
+        # managed by this stack -- see PASSWORD_PARAMETER_PATH -- so permission is granted
+        # by path rather than by pointing at a resource CDK owns.
+        function.add_to_role_policy(
+            aws_iam.PolicyStatement(
+                actions=["ssm:GetParameter"],
+                resources=[
+                    aws_cdk.Arn.format(
+                        aws_cdk.ArnComponents(
+                            service="ssm",
+                            resource="parameter",
+                            resource_name=PASSWORD_PARAMETER_PATH.lstrip("/"),
+                        ),
+                        self,
+                    )
+                ],
+            )
+        )
+
+        return function
+
+    def create_fetcher(self) -> aws_lambda.Function:
+        """The scheduled Garmin fetch, and the timer that runs it.
+
+        This is the piece that makes the dashboard independent of the laptop. It does
+        what `run_fetch` and `import` do together: ask Garmin for a few recent days, put
+        the raw responses in the bucket untouched, then interpret them into the table.
+
+        It logs in with a token bundle rather than a password -- see
+        `backend/garmin/fetch_lambda.py` for why that is possible and why it matters.
+        """
+        if not FETCHER_PACKAGE_DIRECTORY.exists():
+            raise FileNotFoundError(
+                f"{FETCHER_PACKAGE_DIRECTORY} does not exist. Build it first:\n"
+                "    .venv/bin/python -m scripts.build_lambda"
+            )
+
+        function = aws_lambda.Function(
+            self,
+            "Fetcher",
+            runtime=LAMBDA_RUNTIME,
+            architecture=LAMBDA_ARCHITECTURE,
+            handler="backend.garmin.fetch_lambda.handler",
+            code=aws_lambda.Code.from_asset(str(FETCHER_PACKAGE_DIRECTORY)),
+            memory_size=FETCHER_MEMORY_MEGABYTES,
+            timeout=aws_cdk.Duration.seconds(FETCHER_TIMEOUT_SECONDS),
+            environment={
+                "GARMIN_DASHBOARD_TABLE": self.table.table_name,
+                "GARMIN_DASHBOARD_BUCKET": self.raw_bucket.bucket_name,
+                "GARMIN_FETCH_DAYS": str(FETCH_DAYS_BACK),
+            },
+            description="Fetches recent days from Garmin, on a schedule.",
+        )
+
+        # Writes interpreted days, and writes raw responses. It never reads either back
+        # for anything but its own normalising, so read is granted with write rather than
+        # separately.
+        self.table.grant_read_write_data(function)
+        self.raw_bucket.grant_put(function)
+
+        # Reads the token bundle and writes the refreshed one back. Scoped to that single
+        # parameter: this function has no business reading the login password, which sits
+        # under the same prefix.
+        token_parameter_arn = aws_cdk.Arn.format(
+            aws_cdk.ArnComponents(
+                service="ssm",
+                resource="parameter",
+                resource_name=TOKEN_PARAMETER_NAME.lstrip("/"),
+            ),
+            self,
+        )
+
+        function.add_to_role_policy(
+            aws_iam.PolicyStatement(
+                actions=["ssm:GetParameter", "ssm:PutParameter"],
+                resources=[token_parameter_arn],
+            )
+        )
+
+        aws_events.Rule(
+            self,
+            "FetchSchedule",
+            description="Fetch recent days from Garmin four times a day.",
+            schedule=aws_events.Schedule.cron(minute="0", hour=FETCH_HOURS_UTC),
+            targets=[aws_events_targets.LambdaFunction(function)],
+        )
 
         return function
 
@@ -219,21 +358,22 @@ class AppStack(aws_cdk.Stack):
     # -----------------------------------------------------------------------
 
     def create_credential_store(self) -> aws_cloudfront.KeyValueStore:
-        """A tiny key-value store at the edge, holding the expected credential.
+        """A tiny key-value store at the edge, holding the cookie signing secret.
 
-        Created EMPTY on purpose. The credential is written afterwards with the AWS CLI,
+        Created EMPTY on purpose. The secret is written afterwards by `scripts/deploy.py`,
         so it never appears in this repository and never appears in the CloudFormation
-        template either. Until it is written, `basic_auth.js` cannot read the key and
-        denies everything, which is the correct state for a door whose lock is not fitted.
+        template either. Until it is written, `session_gate.js` cannot read the key and
+        turns everybody away, which is the correct state for a door whose lock is not
+        fitted.
         """
         return aws_cloudfront.KeyValueStore(
             self,
             "Credential",
-            comment="Expected HTTP Basic credential for the dashboard.",
+            comment="Session cookie signing secret for the dashboard.",
         )
 
     def create_gate(self) -> aws_cloudfront.Function:
-        """The Basic Auth check, running at the edge on every request.
+        """The session check, running at the edge on every request.
 
         A CloudFront *Function*, not a Lambda@Edge: it runs in a tiny JavaScript sandbox
         inside the CloudFront node itself, starts in under a millisecond, and is billed
@@ -245,12 +385,12 @@ class AppStack(aws_cdk.Stack):
             self,
             "BasicAuth",
             code=aws_cloudfront.FunctionCode.from_file(
-                file_path=str(INFRA_DIRECTORY / "functions" / "basic_auth.js")
+                file_path=str(INFRA_DIRECTORY / "functions" / "session_gate.js")
             ),
             # 2.0 is the runtime that can read a KeyValueStore and await a promise.
             runtime=aws_cloudfront.FunctionRuntime.JS_2_0,
             key_value_store=self.credential_store,
-            comment="HTTP Basic Auth for the whole distribution.",
+            comment="Session cookie check for the whole distribution.",
         )
 
     def create_distribution(self) -> aws_cloudfront.Distribution:
@@ -286,9 +426,9 @@ class AppStack(aws_cdk.Stack):
                 "/api/*": aws_cloudfront.BehaviorOptions(
                     origin=api_origin,
                     viewer_protocol_policy=aws_cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-                    # The API answers with today's numbers and accepts writes. Caching any
-                    # of that would show stale readings and swallow a weigh-in.
-                    cache_policy=aws_cloudfront.CachePolicy.CACHING_DISABLED,
+                    # Never cached, and -- the part that is not obvious -- the cache
+                    # policy has to mention the session cookie. See `api_cache_policy`.
+                    cache_policy=self.api_cache_policy(),
                     # POST is how a weigh-in and a day's calories are recorded, so the
                     # read-only default would break the Log page.
                     allowed_methods=aws_cloudfront.AllowedMethods.ALLOW_ALL,
@@ -310,6 +450,44 @@ class AppStack(aws_cdk.Stack):
             },
             # North America and Europe. The cheapest class, and it is where you are.
             price_class=aws_cloudfront.PriceClass.PRICE_CLASS_100,
+        )
+
+    def api_cache_policy(self) -> aws_cloudfront.CachePolicy:
+        """Never cache the API -- and keep the Set-Cookie header on the way back.
+
+        Nothing is cached in practice, which is the obvious half: the API answers with
+        today's numbers and accepts writes, so caching any of it would show stale readings
+        and swallow a weigh-in. The DEFAULT time-to-live is zero and the Lambda sends no
+        `Cache-Control`, so every response is fetched fresh.
+
+        The non-obvious half is the cookie list, and it took two failures to land on.
+        **CloudFront strips `Set-Cookie` from an origin response when the behaviour's
+        CACHE policy does not mention cookies.** With the managed CACHING_DISABLED policy,
+        signing in returned a perfectly good 204 -- verified by calling the Lambda
+        directly, which did send the header -- and the browser received no cookie, so the
+        login page simply bounced you back to itself.
+
+        Naming the cookie fixes that, but CloudFront then refuses the policy outright:
+        *"The parameter CookieBehavior is invalid for policy with caching disabled."* A
+        cookie list is only allowed when caching is not switched off entirely, which is
+        why the MAXIMUM is one second rather than zero. That single second is the whole
+        price of being able to set a cookie, and it buys nothing back: the default of zero
+        is what every response actually uses.
+
+        The cookie is named rather than allowing all cookies, so anything else a browser
+        happens to be carrying stays out of the cache key.
+        """
+        return aws_cloudfront.CachePolicy(
+            self,
+            "ApiNoCache",
+            comment="Effectively no caching, but Set-Cookie survives.",
+            default_ttl=aws_cdk.Duration.seconds(0),
+            min_ttl=aws_cdk.Duration.seconds(0),
+            # Not zero, and not a typo. See the paragraph above.
+            max_ttl=aws_cdk.Duration.seconds(1),
+            cookie_behavior=aws_cloudfront.CacheCookieBehavior.allow_list(SESSION_COOKIE_NAME),
+            header_behavior=aws_cloudfront.CacheHeaderBehavior.none(),
+            query_string_behavior=aws_cloudfront.CacheQueryStringBehavior.all(),
         )
 
     def api_request_policy(self) -> aws_cloudfront.OriginRequestPolicy:
@@ -362,13 +540,19 @@ class AppStack(aws_cdk.Stack):
             self,
             "DashboardUrl",
             value=f"https://{self.distribution.distribution_domain_name}",
-            description="Open this. It will ask for a username and password.",
+            description="Open this. It will send you to the login page.",
         )
         aws_cdk.CfnOutput(
             self,
             "CredentialStoreArn",
             value=self.credential_store.key_value_store_arn,
-            description="Write the expected credential here after deploying.",
+            description="Write the session signing secret here after deploying.",
+        )
+        aws_cdk.CfnOutput(
+            self,
+            "FetcherFunctionName",
+            value=self.fetcher.function_name,
+            description="Invoke this by hand to fetch immediately.",
         )
         aws_cdk.CfnOutput(
             self,
