@@ -24,7 +24,7 @@ from typing import Any
 
 from backend import paths
 from backend.api import payload
-from backend.store import database
+from backend.store import open_store
 
 #: Where the web app expects to find it. A file under the dashboard's own `public`
 #: folder is served at `/data/days.json`, which is what the browser fetches when the
@@ -72,7 +72,7 @@ def main() -> int:
     last_day = datetime.date.today()
     first_day = last_day - datetime.timedelta(days=arguments.days - 1)
 
-    open_database = database.Database()
+    open_database = open_store.open_store()
 
     # The clock and the disk are read here, at the edge, and passed inwards -- so every
     # function that builds the payload stays testable with a fixed time and no files.

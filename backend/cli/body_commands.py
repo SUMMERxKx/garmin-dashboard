@@ -14,8 +14,8 @@ from backend.body import dexa
 from backend.body import weight
 from backend.cli import days
 from backend.cli import formatting
-from backend.store import database
 from backend.store import day_store
+from backend.store import open_store
 from backend.store import weight_store
 
 #: How far back to look for a previous weigh-in when sanity-checking a new one. Six
@@ -42,7 +42,7 @@ def run_weigh(kilograms: float, date_text: str | None, force: bool) -> int:
         print(problem)
         return 1
 
-    open_database = database.Database()
+    open_database = open_store.open_store()
 
     # Compare against the most recent weigh-in BEFORE this day, which is what makes the
     # pounds-and-decimal-point check possible at all.
@@ -156,7 +156,7 @@ def run_weights(how_many_days: int) -> int:
     last_day = datetime.date.today()
     first_day = last_day - datetime.timedelta(days=how_many_days - 1)
 
-    open_database = database.Database()
+    open_database = open_store.open_store()
     weighings = weight_store.load_weighings_between(open_database, first_day, last_day)
     open_database.close()
 
@@ -235,7 +235,7 @@ def print_change_since_scan(one_scan: dexa.Scan) -> None:
     modelled split printed beside measured numbers reads exactly as solid as they do.
     The second scan is what turns the estimate into a fact.
     """
-    open_database = database.Database()
+    open_database = open_store.open_store()
     recent = day_store.load_snapshots_between(
         open_database,
         one_scan.scan_date,

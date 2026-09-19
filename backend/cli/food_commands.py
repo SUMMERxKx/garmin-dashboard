@@ -14,9 +14,9 @@ from backend.cli import formatting
 from backend.food import intake
 from backend.food import library
 from backend.food import log
-from backend.store import database
 from backend.store import food_store
 from backend.store import intake_store
+from backend.store import open_store
 
 
 def build_food_row(*cells: str) -> str:
@@ -114,7 +114,7 @@ def run_log(food_id: str, servings: float, date_text: str | None) -> int:
     # reads the clock cannot be tested, because its answer changes every time it runs.
     entry.logged_at = datetime.datetime.now()
 
-    open_database = database.Database()
+    open_database = open_store.open_store()
     food_store.save_entry(open_database, day, entry)
     entries = food_store.load_entries_for_day(open_database, day)
     open_database.close()
@@ -188,7 +188,7 @@ def store_entries(
     because the timestamp is part of the storage key: written at the same instant, the
     second entry would replace the first and a meal would silently lose items.
     """
-    open_database = database.Database()
+    open_database = open_store.open_store()
 
     if replace_existing:
         removed = food_store.remove_whole_day(open_database, day)
@@ -207,7 +207,7 @@ def store_entries(
 
 def day_already_has_food(day: datetime.date) -> int:
     """How many entries are already logged for a day."""
-    open_database = database.Database()
+    open_database = open_store.open_store()
     existing = food_store.load_entries_for_day(open_database, day)
     open_database.close()
 
@@ -348,7 +348,7 @@ def run_copy_yesterday(date_text: str | None, replace_existing: bool, add_to_exi
 
     previous_day = day - datetime.timedelta(days=1)
 
-    open_database = database.Database()
+    open_database = open_store.open_store()
     yesterdays_entries = food_store.load_entries_for_day(open_database, previous_day)
     open_database.close()
 
@@ -376,7 +376,7 @@ def run_copy_yesterday(date_text: str | None, replace_existing: bool, add_to_exi
 
 def print_day_running_total(day: datetime.date, whole_library: library.Library) -> None:
     """Print where a day stands after something was logged to it."""
-    open_database = database.Database()
+    open_database = open_store.open_store()
     entries = food_store.load_entries_for_day(open_database, day)
     open_database.close()
 
@@ -417,7 +417,7 @@ def run_ate(kilocalories: float, date_text: str | None, note: str | None) -> int
         print(problem)
         return 1
 
-    open_database = database.Database()
+    open_database = open_store.open_store()
 
     already_there = intake_store.load_intake(open_database, day)
 

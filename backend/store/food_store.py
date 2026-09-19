@@ -14,8 +14,8 @@ from __future__ import annotations
 import datetime
 
 from backend.food import log
-from backend.store import database
 from backend.store import keys
+from backend.store import open_store
 
 
 def entry_to_record(entry: log.LoggedFood) -> dict:
@@ -51,7 +51,7 @@ def record_to_entry(record: dict) -> log.LoggedFood:
 
 
 def save_entry(
-    open_database: database.Database,
+    open_database: open_store.Store,
     day: datetime.date,
     entry: log.LoggedFood,
     user_id: str = keys.DEFAULT_USER_ID,
@@ -73,7 +73,7 @@ def save_entry(
 
 
 def load_entries_for_day(
-    open_database: database.Database,
+    open_database: open_store.Store,
     day: datetime.date,
     user_id: str = keys.DEFAULT_USER_ID,
 ) -> list[log.LoggedFood]:
@@ -92,7 +92,7 @@ def load_entries_for_day(
 
 
 def load_entries_between(
-    open_database: database.Database,
+    open_database: open_store.Store,
     first_day: datetime.date,
     last_day: datetime.date,
     user_id: str = keys.DEFAULT_USER_ID,
@@ -132,7 +132,7 @@ def load_entries_between(
 
 
 def remove_entry(
-    open_database: database.Database,
+    open_database: open_store.Store,
     sort_key: str,
     user_id: str = keys.DEFAULT_USER_ID,
 ) -> None:
@@ -141,7 +141,7 @@ def remove_entry(
 
 
 def remove_whole_day(
-    open_database: database.Database,
+    open_database: open_store.Store,
     day: datetime.date,
     user_id: str = keys.DEFAULT_USER_ID,
 ) -> int:

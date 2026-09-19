@@ -27,10 +27,10 @@ from backend.food import intake
 from backend.food import library
 from backend.food import log
 from backend.garmin import normalize
-from backend.store import database
 from backend.store import day_store
 from backend.store import food_store
 from backend.store import intake_store
+from backend.store import open_store
 from backend.store import weight_store
 
 
@@ -85,7 +85,7 @@ def read_fixed_facts(as_of: datetime.date) -> FixedFacts:
 
 
 def collect_days(
-    open_database: database.Database,
+    open_database: open_store.Store,
     first_day: datetime.date,
     last_day: datetime.date,
 ) -> tuple[list[dict[str, Any]], list[normalize.DailySnapshot]]:
@@ -165,7 +165,7 @@ def collect_days(
 
 def build_baselines(
     snapshots: list[normalize.DailySnapshot],
-    open_database: database.Database,
+    open_database: open_store.Store,
     first_day: datetime.date,
     last_day: datetime.date,
 ) -> dict[str, Any]:
@@ -196,7 +196,7 @@ def build_baselines(
 
 
 def build_payload(
-    open_database: database.Database,
+    open_database: open_store.Store,
     first_day: datetime.date,
     last_day: datetime.date,
     generated_at: datetime.datetime,

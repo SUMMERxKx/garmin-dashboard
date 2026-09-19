@@ -10,8 +10,8 @@ from __future__ import annotations
 import datetime
 
 from backend.food import intake
-from backend.store import database
 from backend.store import keys
+from backend.store import open_store
 
 
 def intake_to_record(one_intake: intake.ManualIntake) -> dict:
@@ -35,7 +35,7 @@ def record_to_intake(record: dict) -> intake.ManualIntake:
 
 
 def save_intake(
-    open_database: database.Database,
+    open_database: open_store.Store,
     one_intake: intake.ManualIntake,
     user_id: str = keys.DEFAULT_USER_ID,
 ) -> None:
@@ -48,7 +48,7 @@ def save_intake(
 
 
 def load_intake(
-    open_database: database.Database,
+    open_database: open_store.Store,
     day: datetime.date,
     user_id: str = keys.DEFAULT_USER_ID,
 ) -> intake.ManualIntake | None:
@@ -65,7 +65,7 @@ def load_intake(
 
 
 def load_intakes_between(
-    open_database: database.Database,
+    open_database: open_store.Store,
     first_day: datetime.date,
     last_day: datetime.date,
     user_id: str = keys.DEFAULT_USER_ID,

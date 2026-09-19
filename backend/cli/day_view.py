@@ -18,8 +18,8 @@ from backend.food import library
 from backend.food import log
 from backend.garmin import normalize
 from backend.garmin import raw_files
-from backend.store import database
 from backend.store import food_store
+from backend.store import open_store
 from backend.store import weight_store
 
 #: The narrowest the INTAKE label column is allowed to get, so a day with two short
@@ -460,7 +460,7 @@ def run_today(date_text: str | None, show_provenance: bool) -> int:
     # The Garmin side comes off the disk; the food side comes out of the database.
     # Two different stores because they are two different kinds of fact: one is an
     # observation we were handed, the other is something you typed.
-    open_database = database.Database()
+    open_database = open_store.open_store()
     entries = food_store.load_entries_for_day(open_database, day)
     recorded_weight = weight_store.load_weighing(open_database, day)
     open_database.close()

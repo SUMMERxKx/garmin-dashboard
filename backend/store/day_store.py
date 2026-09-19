@@ -13,13 +13,13 @@ from __future__ import annotations
 import datetime
 
 from backend.garmin import normalize
-from backend.store import database
 from backend.store import keys
+from backend.store import open_store
 from backend.store import records
 
 
 def save_snapshot(
-    open_database: database.Database,
+    open_database: open_store.Store,
     snapshot: normalize.DailySnapshot,
     user_id: str = keys.DEFAULT_USER_ID,
 ) -> None:
@@ -32,7 +32,7 @@ def save_snapshot(
 
 
 def load_snapshot(
-    open_database: database.Database,
+    open_database: open_store.Store,
     day: datetime.date,
     user_id: str = keys.DEFAULT_USER_ID,
 ) -> normalize.DailySnapshot | None:
@@ -49,7 +49,7 @@ def load_snapshot(
 
 
 def load_snapshots_between(
-    open_database: database.Database,
+    open_database: open_store.Store,
     first_day: datetime.date,
     last_day: datetime.date,
     user_id: str = keys.DEFAULT_USER_ID,

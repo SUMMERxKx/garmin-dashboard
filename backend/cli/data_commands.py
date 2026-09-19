@@ -13,8 +13,8 @@ import datetime
 from backend.cli import formatting
 from backend.garmin import normalize
 from backend.garmin import raw_files
-from backend.store import database
 from backend.store import day_store
+from backend.store import open_store
 
 #: The width of each column in the `days` table, in the order they are printed. The
 #: date is left-aligned because it is a label; every number is right-aligned, because
@@ -36,7 +36,7 @@ def run_import(days_to_import: list[datetime.date]) -> int:
         print("    .venv/bin/python -m backend.garmin.run_fetch --days 7")
         return 1
 
-    open_database = database.Database()
+    open_database = open_store.open_store()
 
     print(f"Importing into {open_database.database_path}")
     print()
@@ -124,7 +124,7 @@ def run_days(how_many_days: int) -> int:
     last_day = datetime.date.today()
     first_day = last_day - datetime.timedelta(days=how_many_days - 1)
 
-    open_database = database.Database()
+    open_database = open_store.open_store()
 
     # One lookup for the whole span, however many days it covers. That is the access
     # pattern the key scheme exists for, and the one baselines will be built on.

@@ -46,8 +46,8 @@ import pydantic
 from backend.api import payload
 from backend.body import weight
 from backend.food import intake
-from backend.store import database
 from backend.store import intake_store
+from backend.store import open_store
 from backend.store import weight_store
 
 #: The default span, matching the exporter so the two answers are the same.
@@ -64,15 +64,19 @@ app = fastapi.FastAPI(
 )
 
 
-def open_database() -> Iterator[database.Database]:
-    """Open the database for one request and close it afterwards.
+def open_database() -> Iterator[open_store.Store]:
+    """Open the store for one request and close it afterwards.
 
     A *dependency* in FastAPI terms: a function whose result is handed to any endpoint
     that asks for it. The `yield` is what makes the close reliable -- the code after it
     runs once the response has gone out, whether or not the endpoint raised. Tests swap
-    this for one that yields an in-memory database, and nothing else has to change.
+    this for one that yields an in-memory store, and nothing else has to change.
+
+    Which store it opens is decided by `open_store`, from one environment variable:
+    SQLite on this laptop, DynamoDB in AWS. This function does not know which it got, and
+    neither does any endpoint below.
     """
-    connection = database.Database()
+    connection = open_store.open_store()
 
     try:
         yield connection
@@ -88,7 +92,7 @@ def open_database() -> Iterator[database.Database]:
 @app.get("/api/days")
 def read_days(
     days: int = fastapi.Query(DEFAULT_DAYS, ge=1, le=2000),
-    connection: database.Database = fastapi.Depends(open_database),
+    connection: open_store.Store = fastapi.Depends(open_database),
 ) -> dict[str, Any]:
     """The payload the dashboard draws, for the last `days` days."""
     last_day = datetime.date.today()
@@ -119,7 +123,7 @@ class IntakeRequest(pydantic.BaseModel):
 @app.post("/api/intake", status_code=201)
 def record_intake(
     request: IntakeRequest,
-    connection: database.Database = fastapi.Depends(open_database),
+    connection: open_store.Store = fastapi.Depends(open_database),
 ) -> dict[str, Any]:
     """Record a typed-in total for one day, replacing any earlier one for that day."""
     problem = intake.describe_problem(request.kilocalories)
@@ -163,7 +167,7 @@ class WeighRequest(pydantic.BaseModel):
 @app.post("/api/weigh", status_code=201)
 def record_weighing(
     request: WeighRequest,
-    connection: database.Database = fastapi.Depends(open_database),
+    connection: open_store.Store = fastapi.Depends(open_database),
 ) -> dict[str, Any]:
     """Record a weigh-in, with the same two checks the command line applies."""
     problem = weight.describe_problem(request.kilograms)

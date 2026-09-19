@@ -15,8 +15,8 @@ from __future__ import annotations
 import datetime
 
 from backend.body import weight
-from backend.store import database
 from backend.store import keys
+from backend.store import open_store
 
 
 def weighing_to_record(one_weighing: weight.Weighing) -> dict:
@@ -44,7 +44,7 @@ def record_to_weighing(record: dict) -> weight.Weighing:
 
 
 def save_weighing(
-    open_database: database.Database,
+    open_database: open_store.Store,
     one_weighing: weight.Weighing,
     user_id: str = keys.DEFAULT_USER_ID,
 ) -> None:
@@ -57,7 +57,7 @@ def save_weighing(
 
 
 def load_weighing(
-    open_database: database.Database,
+    open_database: open_store.Store,
     day: datetime.date,
     user_id: str = keys.DEFAULT_USER_ID,
 ) -> weight.Weighing | None:
@@ -74,7 +74,7 @@ def load_weighing(
 
 
 def load_weighings_between(
-    open_database: database.Database,
+    open_database: open_store.Store,
     first_day: datetime.date,
     last_day: datetime.date,
     user_id: str = keys.DEFAULT_USER_ID,
