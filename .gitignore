@@ -33,6 +33,10 @@ docs/
 infra/cdk.out/
 infra/cdk.context.json
 
+# The Lambda deployment package, assembled by scripts/build_lambda.py on every deploy.
+# It contains a copy of the personal data files, so it must never be committed.
+build/
+
 # Local database -- contains real health data
 garmin-dashboard.db
 *.db

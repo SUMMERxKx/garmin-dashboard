@@ -10,10 +10,10 @@ heart rate stays high between sets without the oxygen cost behind it. Compare wh
 *ate* against what your weight actually *did*, and the difference tells you your real
 maintenance. Everything here exists to make that comparison possible and honest.
 
-> **Status.** The acquisition path, storage, the food and body logs, a tested baseline
-> engine, a local API that reads and writes, and a six-page dashboard are built and
-> working. The cloud, and the energy-balance calculation that closes the loop, are not.
-> See [Roadmap](#roadmap).
+> **Status.** Running on AWS, behind a password: DynamoDB, S3, a Lambda API and a
+> CloudFront distribution, all described in `infra/` and deployed with one command. What
+> is left is the scheduled fetcher and the energy-balance calculation that closes the
+> loop. See [Roadmap](#roadmap).
 
 ---
 
@@ -34,7 +34,7 @@ maintenance. Everything here exists to make that comparison possible and honest.
    normalize.py              17 Garmin shapes → one DailySnapshot
         │
         ▼
-   store/                    SQLite, shaped exactly like the DynamoDB it will become
+   store/                    SQLite on a laptop, DynamoDB in AWS — one env var picks
         │
         ▼
    engine/                   baselines: what is normal FOR YOU  (pure functions)
@@ -47,6 +47,16 @@ maintenance. Everything here exists to make that comparison possible and honest.
         │
         ▼
    dashboard/                React, Vite, Tailwind — six pages; draws, does not judge
+```
+
+In AWS the last two steps become a Lambda behind a CloudFront distribution that also
+serves the built dashboard, so the browser talks to one origin and the front-end code is
+byte-identical to the one that runs against Vite's proxy on a laptop.
+
+```
+  browser ──► CloudFront ──► basic_auth.js at the edge ──► 401, or onward
+                   ├── /api/*  ──► Lambda (FastAPI via mangum) ──► DynamoDB
+                   └── /       ──► S3, private, read through an access control
 ```
 
 **The property everything else rests on:** the raw response is saved *before* anything
@@ -93,7 +103,7 @@ two-factor prompt needs a human.
 ### Checks
 
 ```bash
-.venv/bin/python -m pytest          # 69 tests
+.venv/bin/python -m pytest          # 105 tests
 .venv/bin/python -m ruff check .
 cd dashboard && npm run build && npx oxlint src
 ```
@@ -112,6 +122,9 @@ backend/
   api/        the wire contract, the payload builder, the exporter, and the FastAPI server
   cli/        one module per group of commands; main.py is parser and dispatch only
   tests/
+
+infra/        the AWS setup as code: two stacks, and the edge function that guards them
+scripts/      move data to AWS, build the Lambda package, deploy
 
 dashboard/src/
   data/       the contract mirrored in TypeScript; the fetch (API, then file); the two writes
@@ -134,8 +147,10 @@ Missing crosses the wire as `null`, with its key intact, all the way to the brow
 the database is a rebuildable cache. `import` is safe to run as many times as you like.
 
 **SQLite is shaped like DynamoDB.** One table, `pk`, `sk`, and the record as JSON. It is
-an odd way to use SQLite and entirely deliberate: moving to AWS swaps one class, and the
-access patterns get proven now, while changing them is still free.
+an odd way to use SQLite and entirely deliberate — and it paid: moving to AWS was one new
+class and one environment variable, with the same ten tests run against both stores.
+`GARMIN_DASHBOARD_TABLE` set means DynamoDB, unset means the local file, and nothing else
+in the codebase knows which it got.
 
 **Baselines refuse to guess.** A baseline built from four readings looks exactly as
 authoritative on screen as one built from thirty, so below a documented minimum the
@@ -196,8 +211,11 @@ Confirmed against 31 days of real responses, so nobody has to re-derive it:
 | ✅ | Dashboard: six pages, every metric against its own baseline |
 | ✅ | A local write API — weigh-ins and a day's calories from the browser |
 | ✅ | Running: pace per run and kilometres per week |
+| ✅ | DynamoDB, S3, a Lambda API and CloudFront — described in `infra/`, one command to deploy |
+| ✅ | Online behind a password, with the API unreachable except through the distribution |
+| ◻️ | A custom subdomain (certificate in us-east-1, two CNAMEs at the DNS host) |
+| ◻️ | A scheduled fetcher, so new days arrive without the laptop |
 | ◻️ | Food logging item by item from the browser |
-| ◻️ | DynamoDB and a scheduled fetcher on AWS |
 | ◻️ | **Observed maintenance** — the calculation this is all for |
 
 Observed maintenance needs roughly four weeks of daily weigh-ins and daily food logs

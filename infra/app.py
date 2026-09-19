@@ -35,6 +35,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import aws_cdk
 
+from infra.stacks import app_stack
 from infra.stacks import data_stack
 
 #: Montreal. The health data stays in Canada, and it is the closest AWS region to
@@ -65,11 +66,24 @@ def build_app() -> aws_cdk.App:
 
     app = aws_cdk.App()
 
-    data_stack.DataStack(
+    storage = data_stack.DataStack(
         app,
         "HealthDashboardData",
         env=environment,
         description="Raw Garmin response storage and the application database.",
+    )
+
+    # Two stacks rather than one, and the split is deliberate. The data stack holds the
+    # table and the raw archive, both set to survive deletion, and it should be touched as
+    # rarely as possible. Everything in the application stack is rebuildable from this
+    # repository in two minutes, so it can be destroyed and redeployed without a thought.
+    # Keeping them apart means a careless `cdk destroy` on the app cannot reach the data.
+    app_stack.AppStack(
+        app,
+        "HealthDashboardApp",
+        table=storage.table,
+        env=environment,
+        description="The dashboard's API, website and the door in front of them.",
     )
 
     for tag_name, tag_value in STACK_TAGS.items():

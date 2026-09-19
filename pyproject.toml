@@ -48,6 +48,9 @@ packages = [
     # tests, which synthesise the stack in memory and assert against the template.
     "infra",
     "infra.stacks",
+    # One-off operational scripts. A package rather than loose files so they can import
+    # the backend the same way everything else does, with `python -m scripts.name`.
+    "scripts",
 ]
 
 [tool.pytest.ini_options]
@@ -69,7 +72,10 @@ line-length = 100
 target-version = "py312"
 # reference/ is the previous build, kept only so it can be read. It is not maintained,
 # so linting it would produce noise about code we have deliberately frozen.
-extend-exclude = ["reference"]
+# `build/` is the Lambda deployment package: third-party libraries copied in by
+# scripts/build_lambda.py. Linting someone else's shipped code produces thousands of
+# findings about code we cannot change.
+extend-exclude = ["reference", "build"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
