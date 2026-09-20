@@ -48,8 +48,30 @@ SESSION_SECRET_VARIABLE = "GARMIN_SESSION_SECRET"
 #: verifies cookies with it. Matches `infra/stacks/app_stack.py`.
 SESSION_SECRET_KEY = "session-secret"
 
+#: The custom domain and its certificate, if this deployment has one. Read from the same
+#: local file as the secrets, and simply absent on a machine that owns no domain.
+CUSTOM_DOMAIN_VARIABLE = "GARMIN_DASHBOARD_DOMAIN"
+CERTIFICATE_ARN_VARIABLE = "GARMIN_CERTIFICATE_ARN"
+
 #: Node versions the CDK supports. 25 is not one of them.
 SUPPORTED_NODE_MAJORS = [20, 22, 24]
+
+
+def read_optional(variable_name: str) -> str:
+    """One value from the secrets file, or empty if it is not there.
+
+    Unlike `read_secret`, this never invents a value. A missing domain means this
+    deployment does not have one, which is a perfectly good state.
+    """
+    if not SECRETS_FILE.exists():
+        return ""
+
+    found = re.search(rf"{variable_name}=(\S+)", SECRETS_FILE.read_text())
+
+    if found is None:
+        return ""
+
+    return found.group(1)
 
 
 def read_secret(variable_name: str) -> str:
@@ -201,6 +223,14 @@ def deploy(origin_secret: str, session_secret: str) -> None:
     environment = dict(os.environ)
     environment[ORIGIN_SECRET_VARIABLE] = origin_secret
     environment[SESSION_SECRET_VARIABLE] = session_secret
+
+    # Passed through only when this deployment has a domain, so a fresh clone without one
+    # still deploys and simply keeps the CloudFront address.
+    for optional_name in (CUSTOM_DOMAIN_VARIABLE, CERTIFICATE_ARN_VARIABLE):
+        value = read_optional(optional_name)
+
+        if value:
+            environment[optional_name] = value
 
     subprocess.run(
         ["cdk", "deploy", "--all", "--require-approval", "never"],

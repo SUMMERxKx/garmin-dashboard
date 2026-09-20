@@ -32,6 +32,7 @@ import os
 from pathlib import Path
 
 import aws_cdk
+from aws_cdk import aws_certificatemanager
 from aws_cdk import aws_cloudfront
 from aws_cdk import aws_cloudfront_origins
 from aws_cdk import aws_dynamodb
@@ -99,6 +100,18 @@ TOKEN_PARAMETER_NAME = "/garmin-dashboard/garmin-tokens"
 
 #: The cookie the session lives in, matching `backend/api/auth.py` and `session_gate.js`.
 SESSION_COOKIE_NAME = "session"
+
+#: The name the dashboard answers to, and the certificate proving it is really us.
+#:
+#: Both are optional: with neither set, the distribution keeps its own
+#: `*.cloudfront.net` address and everything still works. That is deliberate, so a fresh
+#: clone can deploy without owning a domain.
+#:
+#: The certificate must live in **us-east-1** whatever region everything else is in.
+#: CloudFront is a global service and only reads certificates from there. It is the one
+#: unavoidable exception to ca-central-1, and it is free.
+CUSTOM_DOMAIN_VARIABLE = "GARMIN_DASHBOARD_DOMAIN"
+CERTIFICATE_ARN_VARIABLE = "GARMIN_CERTIFICATE_ARN"
 
 #: The key the session signing secret is stored under, matching `session_gate.js` and
 #: `backend/api/auth.py`. The API signs cookies with this value and the edge verifies them
@@ -404,6 +417,30 @@ class AppStack(aws_cdk.Stack):
             self.website_bucket
         )
 
+        custom_domain = os.environ.get(CUSTOM_DOMAIN_VARIABLE, "").strip()
+        certificate_arn = os.environ.get(CERTIFICATE_ARN_VARIABLE, "").strip()
+
+        # Both or neither. A domain without a certificate would make CloudFront serve a
+        # name it cannot prove, and every browser would refuse the connection with a
+        # security warning rather than a useful error.
+        if (custom_domain == "") != (certificate_arn == ""):
+            raise ValueError(
+                f"Set both {CUSTOM_DOMAIN_VARIABLE} and {CERTIFICATE_ARN_VARIABLE}, or "
+                "neither. A domain without its certificate cannot be served."
+            )
+
+        domain_names = [custom_domain] if custom_domain else None
+
+        certificate = None
+
+        if certificate_arn:
+            # `from_certificate_arn` rather than creating one here, because a certificate
+            # created by this stack would be destroyed with it -- and re-issuing means
+            # re-validating through DNS by hand every time.
+            certificate = aws_certificatemanager.Certificate.from_certificate_arn(
+                self, "Certificate", certificate_arn
+            )
+
         api_origin = aws_cloudfront_origins.FunctionUrlOrigin(
             self.api_url,
             # Added to every request CloudFront forwards, and overwritten if a viewer
@@ -416,6 +453,8 @@ class AppStack(aws_cdk.Stack):
             "Distribution",
             comment="Garmin health dashboard.",
             default_root_object="index.html",
+            domain_names=domain_names,
+            certificate=certificate,
             default_behavior=aws_cloudfront.BehaviorOptions(
                 origin=website_origin,
                 viewer_protocol_policy=aws_cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -536,11 +575,19 @@ class AppStack(aws_cdk.Stack):
 
     def publish_outputs(self) -> None:
         """The address, and the two names needed to fit the lock afterwards."""
+        custom_domain = os.environ.get(CUSTOM_DOMAIN_VARIABLE, "").strip()
+
         aws_cdk.CfnOutput(
             self,
             "DashboardUrl",
-            value=f"https://{self.distribution.distribution_domain_name}",
+            value=f"https://{custom_domain or self.distribution.distribution_domain_name}",
             description="Open this. It will send you to the login page.",
+        )
+        aws_cdk.CfnOutput(
+            self,
+            "DistributionDomainName",
+            value=self.distribution.distribution_domain_name,
+            description="Point the custom domain's CNAME at this.",
         )
         aws_cdk.CfnOutput(
             self,
