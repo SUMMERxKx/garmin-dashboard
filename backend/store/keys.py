@@ -18,6 +18,7 @@ Every record has a two-part key:
     USER#me       DAY#2026-09-12#WEIGHT
     USER#me       DAY#2026-09-12#INTAKE
     USER#me       DAY#2026-09-12#FOOD#20260912T120000000000
+    USER#me       INSIGHT
 
 Why this shape
 --------------
@@ -106,6 +107,16 @@ def food_entry_key(day: datetime.date, logged_at: datetime.datetime) -> str:
 def food_entry_prefix(day: datetime.date) -> str:
     """Matches every food entry for one day."""
     return f"{day_prefix(day)}FOOD{SEPARATOR}"
+
+
+def insight_key() -> str:
+    """Where the most recent AI reading is kept. One per user, replaced each time.
+
+    Deliberately OUTSIDE the `DAY#` prefix. It is not a reading about one day, it is a
+    reading of the whole span, and putting it under a day would mean every span query
+    dragged it back and every consumer had to learn to skip it.
+    """
+    return "INSIGHT"
 
 
 def day_range_bounds(

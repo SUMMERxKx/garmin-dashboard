@@ -1,6 +1,7 @@
-import { Flame, Footprints, HeartPulse, LayoutGrid, PenLine, Scale, type LucideIcon } from "lucide-react";
+import { Flame, Footprints, HeartPulse, LayoutGrid, LogOut, PenLine, Scale, type LucideIcon } from "lucide-react";
 import { DISPLAY_NAME } from "@/config";
 import type { DataSource, DaysPayload } from "@/data/types";
+import { signOut } from "@/data/write";
 import { formatShortDay } from "@/lib/format";
 import { hrefFor, type Page } from "@/lib/router";
 import { cn } from "@/lib/utils";
@@ -29,6 +30,28 @@ const ITEMS: Item[] = [
   { page: "body", label: "Body", code: "05", icon: Scale },
   { page: "log", label: "Log", code: "06", icon: PenLine },
 ];
+
+/**
+ * What the feed line says.
+ *
+ * It used to name a port, which was true on a laptop and a lie everywhere else. It then
+ * named the host, which was accurate but pointless: the address is already in the
+ * browser's address bar, and printing it into the page only puts it into every
+ * screenshot as well. What is actually worth knowing is whether the numbers are coming
+ * from the live API or from a stale exported file, so that is all this says.
+ */
+function describeSource(source: DataSource | null): string {
+  if (source === null) {
+    return "connecting…";
+  }
+
+  if (source === "file") {
+    return "exported file · may be stale";
+  }
+
+  return "live";
+}
+
 
 export function Sidebar({
   page,
@@ -86,7 +109,7 @@ export function Sidebar({
             className={cn("inline-block size-1.5", source === "api" ? "bg-signal-400" : "bg-hull-400")}
             aria-hidden="true"
           />
-          {source === null ? "connecting…" : source === "api" ? "live · API on :8000" : "file · days.json"}
+          {describeSource(source)}
         </p>
         {payload !== null && payload.first_day !== null && payload.last_day !== null && (
           <>
@@ -98,6 +121,15 @@ export function Sidebar({
             </p>
           </>
         )}
+
+        <button
+          type="button"
+          onClick={() => void signOut()}
+          className="mt-3 flex w-full items-center gap-2 border border-hull-700 px-2.5 py-1.5 text-left font-mono text-[0.66rem] text-hull-300 transition-colors hover:border-hull-600 hover:bg-hull-900 hover:text-hull-100"
+        >
+          <LogOut className="size-3" strokeWidth={1.75} aria-hidden="true" />
+          Sign out
+        </button>
       </div>
     </nav>
   );

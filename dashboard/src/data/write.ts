@@ -119,3 +119,24 @@ function describeFailure(responseBody: Record<string, unknown>, status: number):
 
   return `The API refused the request (HTTP ${status}).`;
 }
+
+
+/**
+ * End this browser's session and return to the login page.
+ *
+ * Only this browser. Signing every device out at once means rotating the signing secret,
+ * which is the emergency lever rather than the everyday one -- see `backend/api/auth.py`.
+ *
+ * The redirect happens whatever the server answers. If the request failed, the cookie may
+ * still be set, but the login page is where you want to be either way, and it will bounce
+ * you straight back in if the session turned out to still be good.
+ */
+export async function signOut(): Promise<void> {
+  try {
+    await fetch("/api/logout", { method: "POST" });
+  } catch {
+    // Offline, or the API is down. Go to the login page regardless.
+  }
+
+  window.location.replace("/login.html");
+}

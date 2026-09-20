@@ -44,6 +44,7 @@ packages = [
     "backend.body",
     "backend.engine",
     "backend.api",
+    "backend.ai",
     # The CDK application. Listed so `import infra.stacks.data_stack` works from the
     # tests, which synthesise the stack in memory and assert against the template.
     "infra",

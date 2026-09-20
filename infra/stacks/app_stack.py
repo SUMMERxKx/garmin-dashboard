@@ -234,9 +234,40 @@ class AppStack(aws_cdk.Stack):
         # thing they describe.
         self.table.grant_read_write_data(function)
 
-        # Read the login password, and only that path. The parameter itself is not
-        # managed by this stack -- see PASSWORD_PARAMETER_PATH -- so permission is granted
-        # by path rather than by pointing at a resource CDK owns.
+        # Ask a model to read the numbers. Invoke only -- it cannot create, delete or
+        # configure anything in Bedrock.
+        #
+        # TWO resources are needed and it is not obvious why. An inference profile is a
+        # router, so a call needs permission on the profile AND on the foundation model
+        # the profile forwards to. Granting only the profile fails with an authorization
+        # error naming the underlying model, which reads like a completely different
+        # problem. Foundation-model ARNs carry no account id, which is why one is built
+        # with an empty account below and the other is not.
+        function.add_to_role_policy(
+            aws_iam.PolicyStatement(
+                actions=["bedrock:InvokeModel"],
+                resources=[
+                    # The profile itself, in this account.
+                    aws_cdk.Arn.format(
+                        aws_cdk.ArnComponents(
+                            service="bedrock",
+                            resource="inference-profile",
+                            resource_name="*amazon.nova*",
+                        ),
+                        self,
+                    ),
+                    # The model the profile routes to. A regional profile can forward to
+                    # any region in its group, so the region is left open here while the
+                    # model name stays narrow.
+                    "arn:aws:bedrock:*::foundation-model/amazon.nova*",
+                ],
+            )
+        )
+
+        # Read the login password and, if one is set, the Anthropic API key. Only that
+        # path. Neither parameter is managed by this stack -- see PASSWORD_PARAMETER_PATH
+        # -- so permission is granted by path rather than by pointing at a resource CDK
+        # owns.
         function.add_to_role_policy(
             aws_iam.PolicyStatement(
                 actions=["ssm:GetParameter"],

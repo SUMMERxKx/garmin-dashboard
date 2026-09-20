@@ -1,4 +1,5 @@
 import { Activity, Flame, Scale } from "lucide-react";
+import { InsightPanel } from "@/components/panels/insight";
 import { BarChart, Legend, LineChart, type Domain } from "@/components/ui/charts";
 import { MiniBars, Sparkline } from "@/components/ui/mini-chart";
 import { SourceTag, StatTile, TrendBadge } from "@/components/ui/stat-tile";
@@ -224,6 +225,10 @@ export function OverviewPage({ payload }: { payload: DaysPayload }) {
             )}
           </PanelBody>
         </Panel>
+      </div>
+
+      <div className="mt-4">
+        <InsightPanel />
       </div>
 
       <Panel className="mt-4">

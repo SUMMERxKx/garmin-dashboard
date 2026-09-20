@@ -203,8 +203,16 @@ def check_node_version() -> None:
     print(f"  node {version}")
 
 
+#: Written into `dashboard/public/` by `backend.api.export` so the dashboard has
+#: something to read when the API is not running locally. Vite copies everything in
+#: `public/` into the build, which means it would otherwise be UPLOADED -- a static file
+#: of real health readings sitting in a bucket, for no reason, since the deployed site
+#: reads the API. Removed from the build output before anything is published.
+LOCAL_ONLY_IN_BUILD = ["data"]
+
+
 def build_the_dashboard() -> None:
-    """`npm run build`, which writes dashboard/dist."""
+    """`npm run build`, then take the local-only files back out of the result."""
     print()
     print("Building the dashboard…")
 
@@ -213,6 +221,17 @@ def build_the_dashboard() -> None:
         cwd=paths.PROJECT_ROOT / "dashboard",
         check=True,
     )
+
+    import shutil
+
+    built = paths.PROJECT_ROOT / "dashboard" / "dist"
+
+    for name in LOCAL_ONLY_IN_BUILD:
+        unwanted = built / name
+
+        if unwanted.exists():
+            shutil.rmtree(unwanted)
+            print(f"  removed {name}/ from the build (local-only, never published)")
 
 
 def deploy(origin_secret: str, session_secret: str) -> None:

@@ -25,6 +25,7 @@ moves to AWS.
 Reading and writing
 -------------------
     GET  /api/days?days=400     the whole payload, exactly as `export.py` writes it
+    GET  /api/insight           a short reading of the numbers, from Claude on Bedrock
     POST /api/intake            { day, kilocalories, note? }  a typed-in daily total
     POST /api/weigh             { day, kilograms, fat_percent?, force? }  a weigh-in
     POST /api/login             { password }  sets the session cookie
@@ -45,6 +46,9 @@ from typing import Any
 import fastapi
 import pydantic
 
+from backend.ai import factsheet
+from backend.ai import interpret
+from backend.ai import store as insight_store
 from backend.api import auth
 from backend.api import payload
 from backend.body import weight
@@ -287,3 +291,85 @@ def log_out() -> fastapi.Response:
     response.delete_cookie(key=auth.COOKIE_NAME, path="/")
 
     return response
+
+
+# ---------------------------------------------------------------------------
+# The AI reading
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/insight")
+def read_insight(
+    days: int = fastapi.Query(DEFAULT_DAYS, ge=1, le=2000),
+    connection: open_store.Store = fastapi.Depends(open_database),
+) -> dict[str, Any]:
+    """A few sentences on what the numbers are doing, written by Claude on Bedrock.
+
+    The model is given a fact sheet this code computed and nothing else, and every number
+    it writes back is checked against that sheet. A reading containing an invented number
+    is refused rather than shown -- see `backend/ai/interpret.py` for why that check is
+    the entire reason this feature is safe to have.
+
+    Cached against a fingerprint of the facts, so opening the dashboard repeatedly costs
+    one Bedrock call and a new reading appears only when a number actually changes.
+    """
+    last_day = datetime.date.today()
+    first_day = last_day - datetime.timedelta(days=days - 1)
+
+    whole_payload = payload.build_payload(
+        connection,
+        first_day,
+        last_day,
+        datetime.datetime.now(),
+        payload.read_fixed_facts(last_day),
+    )
+
+    sheet = factsheet.build(whole_payload)
+    fingerprint = interpret.cache_key(sheet)
+
+    already_written = insight_store.load_if_still_about(connection, fingerprint)
+
+    if already_written is not None:
+        return {"status": "ready", "reading": already_written, "from_cache": True}
+
+    try:
+        reading = interpret.ask(sheet)
+    except interpret.NotAvailable as problem:
+        # Bedrock is off, or the account has not been granted model access yet. A normal
+        # state, not a fault, so it gets its own status rather than a 500.
+        #
+        # The RAW error goes to the log and nowhere else. AWS error strings contain the
+        # account id, the IAM role name and the function name, and sending those to a
+        # browser would put them in network logs, screenshots and anybody's dev tools.
+        print(f"insight unavailable: {problem}")
+
+        return {
+            "status": "unavailable",
+            "detail": problem.public_reason,
+            "reading": None,
+            "from_cache": False,
+        }
+
+    if not reading.is_trustworthy:
+        # The model wrote a number that was not on the fact sheet. Throw the whole answer
+        # away. Showing the good sentences and dropping the bad one is not an option:
+        # once it has invented one figure, none of its reasoning can be relied upon.
+        print(f"insight rejected, invented numbers: {reading.invented_numbers}")
+
+        return {
+            "status": "rejected",
+            # The invented numbers are the model's own output about this user's own data,
+            # so naming them reveals nothing they cannot already see -- and seeing WHICH
+            # figure was made up is the whole value of telling them at all.
+            "detail": (
+                "The model wrote numbers that were not in the data: "
+                + ", ".join(reading.invented_numbers)
+            ),
+            "reading": None,
+            "from_cache": False,
+        }
+
+    as_json = interpret.reading_to_json(reading, sheet)
+    insight_store.save(connection, as_json)
+
+    return {"status": "ready", "reading": as_json, "from_cache": False}
