@@ -9,9 +9,7 @@
 export type InsightReading = {
   headline: string;
   observations: string[];
-  model_id: string;
-  input_tokens: number;
-  output_tokens: number;
+  /** Changes when the underlying numbers change. Not shown; used to know it is current. */
   facts_fingerprint: string;
 };
 

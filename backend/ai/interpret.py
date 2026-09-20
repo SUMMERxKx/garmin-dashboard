@@ -381,13 +381,33 @@ def ask(sheet: str, client: Any = None, api_key: str | None = None) -> Reading:
     )
 
 
+#: The only keys a reading may carry to a browser. Anything else a stored record happens
+#: to hold -- including fields an older version of this code wrote -- is dropped on the
+#: way out. Written as an allow list rather than a list of things to remove, so a field
+#: added later is excluded by default instead of leaking until somebody notices.
+PUBLIC_READING_FIELDS = ["headline", "observations", "facts_fingerprint"]
+
+
+def public_reading(stored: dict[str, Any]) -> dict[str, Any]:
+    """Strip a stored reading down to what may leave the server.
+
+    Applied to CACHED readings as well as fresh ones. A record written before this rule
+    existed still holds the model name and token counts, and would otherwise keep serving
+    them until the cache happened to turn over.
+    """
+    return {key: stored[key] for key in PUBLIC_READING_FIELDS if key in stored}
+
+
 def reading_to_json(reading: Reading, sheet: str) -> dict[str, Any]:
-    """The shape the dashboard receives, and the shape that gets cached."""
+    """The shape the dashboard receives, and the shape that gets cached.
+
+    Which model wrote it and what it cost are deliberately NOT here. They are useful in a
+    log and useless on a screen: a reader wants the reading, not the plumbing behind it,
+    and naming a vendor in the interface means the interface has to be edited every time
+    the vendor changes. Both are printed to CloudWatch instead.
+    """
     return {
         "headline": reading.headline,
         "observations": reading.observations,
-        "model_id": reading.model_id,
-        "input_tokens": reading.input_tokens,
-        "output_tokens": reading.output_tokens,
         "facts_fingerprint": cache_key(sheet),
     }

@@ -330,7 +330,13 @@ def read_insight(
     already_written = insight_store.load_if_still_about(connection, fingerprint)
 
     if already_written is not None:
-        return {"status": "ready", "reading": already_written, "from_cache": True}
+        # Stripped on the way out, not just on the way in. A reading cached by an older
+        # version of this code still carries fields that are no longer sent.
+        return {
+            "status": "ready",
+            "reading": interpret.public_reading(already_written),
+            "from_cache": True,
+        }
 
     try:
         reading = interpret.ask(sheet)
@@ -368,6 +374,13 @@ def read_insight(
             "reading": None,
             "from_cache": False,
         }
+
+    # The model and the token count go to the log rather than to the browser. Useful for
+    # working out what a reading cost; no business being on screen.
+    print(
+        f"insight written by {reading.model_id}: "
+        f"{reading.input_tokens} in / {reading.output_tokens} out"
+    )
 
     as_json = interpret.reading_to_json(reading, sheet)
     insight_store.save(connection, as_json)

@@ -4,7 +4,7 @@ import { Panel, PanelBody, PanelHeader } from "@/components/ui/surface";
 import { loadInsight, type InsightAnswer } from "@/data/insight";
 
 /**
- * A few sentences on what the numbers are doing, written by a model.
+ * A few sentences on what the numbers are doing.
  *
  * WHAT IT IS ALLOWED TO BE
  * ------------------------
@@ -35,8 +35,7 @@ export function InsightPanel() {
         icon={Sparkles}
         title="Reading"
         tone="ion"
-        note="Written by Claude from a sheet of figures this dashboard computed. Every number it writes is checked against that sheet before you see it."
-        meta={answer?.reading?.model_id.split("/")[0]}
+        note="An interpretation of the figures above. Every number is checked against your data before it appears here."
       />
       <PanelBody>
         {answer === null && <p className="font-mono text-xs text-hull-400">reading the numbers…</p>}
@@ -58,38 +57,24 @@ export function InsightPanel() {
               ))}
             </ul>
 
-            <p className="mt-4 border-t border-hull-700 pt-2.5 font-mono text-[0.62rem] text-hull-500">
-              {answer.reading.model_id} · {answer.reading.input_tokens} in /{" "}
-              {answer.reading.output_tokens} out
-              {answer.from_cache ? " · cached until the numbers change" : ""}
+            <p className="mt-4 border-t border-hull-700 pt-2.5 text-[0.66rem] text-hull-500">
+              Rewritten whenever your numbers change.
             </p>
           </>
         )}
 
         {answer?.status === "unavailable" && (
-          <>
-            <p className="text-sm leading-relaxed text-hull-300">
-              No reading. The model is not reachable from this deployment yet.
-            </p>
-            {answer.detail !== undefined && (
-              <p className="mt-2 font-mono text-[0.62rem] leading-relaxed text-hull-500">
-                {answer.detail}
-              </p>
-            )}
-          </>
+          <p className="text-sm leading-relaxed text-hull-300">
+            No reading available right now.
+          </p>
         )}
 
         {answer?.status === "rejected" && (
           <>
             <p className="text-sm leading-relaxed text-hull-100">
-              A reading was written and thrown away. The model used a number that was not in
-              your data, so none of it was shown.
+              A reading was written and discarded. It contained a figure that is not in your
+              data, so none of it is shown.
             </p>
-            {answer.detail !== undefined && (
-              <p className="mt-2 font-mono text-[0.62rem] leading-relaxed text-plume-400">
-                {answer.detail}
-              </p>
-            )}
           </>
         )}
       </PanelBody>

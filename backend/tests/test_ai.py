@@ -246,3 +246,57 @@ def test_the_cache_key_follows_the_facts_not_the_date() -> None:
 
     assert first == same
     assert first != different
+
+
+# ---------------------------------------------------------------------------
+# What may leave the server
+# ---------------------------------------------------------------------------
+
+
+def test_a_reading_sent_to_a_browser_names_no_vendor_and_no_cost() -> None:
+    """Which model wrote it and what it cost belong in a log, not on a screen.
+
+    An interface that names its supplier has to be edited every time the supplier
+    changes, and the reader came for the reading rather than the plumbing.
+    """
+    reading = interpret.Reading(
+        headline="A typical week",
+        observations=["HRV is near normal."],
+        model_id="bedrock/ca.amazon.nova-lite-v1:0",
+        input_tokens=891,
+        output_tokens=113,
+        invented_numbers=[],
+    )
+
+    as_json = interpret.reading_to_json(reading, "- HRV: 104 ms")
+
+    assert set(as_json) == {"headline", "observations", "facts_fingerprint"}
+    assert "nova" not in str(as_json).lower()
+    assert "bedrock" not in str(as_json).lower()
+
+
+def test_a_reading_cached_by_an_older_version_is_stripped_on_the_way_out() -> None:
+    """The failure this catches actually happened: the fields were removed from what gets
+    WRITTEN, and a record already in the cache kept serving them."""
+    stored_by_an_older_version = {
+        "headline": "h",
+        "observations": ["o"],
+        "facts_fingerprint": "abc",
+        "model_id": "bedrock/ca.amazon.nova-lite-v1:0",
+        "input_tokens": 891,
+        "output_tokens": 113,
+    }
+
+    cleaned = interpret.public_reading(stored_by_an_older_version)
+
+    assert set(cleaned) == {"headline", "observations", "facts_fingerprint"}
+
+
+def test_a_field_added_later_is_excluded_by_default() -> None:
+    """An allow list rather than a block list, so the next field to be added does not
+    leak until somebody remembers to exclude it."""
+    cleaned = interpret.public_reading(
+        {"headline": "h", "observations": [], "facts_fingerprint": "x", "some_new_debug_field": "secret"}
+    )
+
+    assert "some_new_debug_field" not in cleaned
