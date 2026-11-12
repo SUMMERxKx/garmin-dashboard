@@ -149,13 +149,15 @@ Run these as `.venv/bin/python -m backend.cli.main <command>`.
 ### Putting it online
 
 ```bash
-.venv/bin/pip install -e ".[infra,aws,api]"
+.venv/bin/pip install -e ".[infra,aws,api]" "botocore[crt]"
 .venv/bin/python -m scripts.deploy
 ```
 
-You need the AWS CDK command line, AWS credentials, and Node 20, 22 or 24 (the deploy script
-stops early on anything else). `scripts.deploy` builds the dashboard, builds both Lambda
-packages with `scripts/build_lambda.py` (no Docker, it fetches Linux wheels), runs
+You need the AWS CDK command line, the AWS CLI, AWS credentials, and Node 20, 22 or 24 (the
+deploy script stops early on anything else). `botocore[crt]` is not in any extra but is
+required: the edge store's API is signed with SigV4a, and without it writing the signing
+secret fails with what looks like a DNS error. `scripts.deploy` builds the dashboard, builds
+both Lambda packages with `scripts/build_lambda.py` (no Docker, it fetches Linux wheels), runs
 `cdk deploy --all`, writes the signing secret to the edge, and creates a login password in
 Parameter Store if there is none. Secrets are read from `docs/personal/`, which is gitignored,
 and generated there if missing. To use your own domain, set `GARMIN_DASHBOARD_DOMAIN` and
@@ -249,15 +251,16 @@ by Amazon Nova Lite on Bedrock. Here is how it works.
    training.
 2. `ai/interpret.py` sends the sheet to the model with a prompt that forbids new numbers,
    advice and diagnosis. Temperature is 0.
-3. Every number in the reply is checked against the sheet. One that is not on it means the
-   whole reading is thrown away and the page says so.
+3. Every number in the reply, apart from whole numbers up to ten, is checked against the
+   sheet. One that is not on it means the whole reading is thrown away and the page says so.
 4. The reading is stored against a fingerprint of the sheet, so opening the dashboard ten
    times costs one model call and a new weigh-in or fetch is what triggers a new one.
 
 The prompt asks for at most four observations and a headline of up to eight words. If an
 Anthropic API key exists in Parameter Store the same prompt goes to Anthropic's API instead,
-and removing the key switches back to Bedrock. Only the headline, observations and
-fingerprint reach the browser. The model name and token counts go to the log.
+and removing the key switches back to Bedrock. A successful reading carries only the
+headline, observations and fingerprint to the browser; a rejected one carries the invented
+numbers in its `detail`. The model name and token counts go to the log.
 
 ---
 
